@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!--
-   info.plist
-   HeartRateMonitor
-
-   Created by Phoenix Perry on 05/03/2025.
-   Copyright (c) 2025 ___ORGANIZATIONNAME___. All rights reserved.
--->
 <plist version="1.0">
-<dict/>
+    <dict>
+        <key>NSBluetoothAlwaysUsageDescription</key>
+        <string>This app needs Bluetooth to connect to your heart rate monitor and send data to your laptop.</string>
+        <key>NSBluetoothPeripheralUsageDescription</key>
+        <string>This app needs Bluetooth to connect to your heart rate monitor and share data</string>
+</dict>
 </plist>

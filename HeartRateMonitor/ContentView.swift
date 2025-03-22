@@ -1,83 +1,182 @@
-//
-//  ContentView.swift
-//  HeartRateMonitor
-//
-//  Created by Phoenix Perry on 05/03/2025.
-//
-
 import SwiftUI
-import CoreData
 
 struct ContentView: View {
-    @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
+    @StateObject private var heartRateManager = HeartRateManager()
+    @State private var scale: CGFloat = 1.0
+    @State private var showingDeviceList = false
+    
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
+        VStack {
+            // Title
+            Text("Heart Rate Monitor")
+                .font(.largeTitle)
+                .padding(.bottom, 20)
+            
+            // Heart Image with Animation
+            ZStack {
+                Image("HeartImage")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 200, height: 200)
+                    .scaleEffect(scale)
+                    .onChange(of: heartRateManager.heartRate) { oldValue, newValue in
+                        if newValue > 0 {
+                            animateHeart()
+                        }
                     }
-                }
-                .onDelete(perform: deleteItems)
+                
+                Text("\(heartRateManager.heartRate) bpm")
+                    .font(.custom("Futura-CondensedMedium", size: 28))
+                    .foregroundColor(.white)
             }
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+            .padding(.bottom, 20)
+            
+            // Device Info
+            GroupBox(label: Text("Device Information").bold()) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(heartRateManager.connected)
+                    Text(heartRateManager.bodyLocation)
+                    Text(heartRateManager.manufacturer)
+                }
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+            }
+            .padding(.bottom, 20)
+            
+            // Control Buttons
+            HStack(spacing: 20) {
+                Button(action: {
+                    if heartRateManager.isConnected {
+                        heartRateManager.disconnectCurrentPeripheral()
+                    } else {
+                        showingDeviceList = true
                     }
+                }) {
+                    Text(heartRateManager.isConnected ? "Disconnect" : "Connect")
+                        .frame(minWidth: 100)
                 }
+                .buttonStyle(.borderedProminent)
+                
+                Button(action: {
+                    if heartRateManager.isScanning {
+                        heartRateManager.stopScanning()
+                    } else {
+                        heartRateManager.startScanning()
+                        showingDeviceList = true
+                    }
+                }) {
+                    Text(heartRateManager.isScanning ? "Stop Scan" : "Scan")
+                        .frame(minWidth: 100)
+                }
+                .buttonStyle(.bordered)
             }
-            Text("Select an item")
+        }
+        .padding()
+        .frame(minWidth: 400, minHeight: 500)
+        .sheet(isPresented: $showingDeviceList) {
+            DeviceListView(heartRateManager: heartRateManager, isPresented: $showingDeviceList)
         }
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+    
+    // Animation function for heart beat
+    func animateHeart() {
+        if heartRateManager.heartRate > 0 {
+            withAnimation(.easeInOut(duration: 0.1)) {
+                scale = 1.1
             }
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.easeInOut(duration: 0.1)) {
+                    scale = 1.0
+                }
+            }
+            
+            // Set up next beat
+            let interval = 60.0 / Double(heartRateManager.heartRate)
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval) {
+                if heartRateManager.heartRate > 0 {
+                    animateHeart()
+                }
             }
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
+// Device List View as a separate component
+struct DeviceListView: View {
+    @ObservedObject var heartRateManager: HeartRateManager
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        VStack {
+            Text("Available Devices")
+                .font(.headline)
+                .padding()
+            
+            if heartRateManager.discoveredPeripherals.isEmpty {
+                VStack {
+                    ProgressView()
+                        .padding()
+                    Text("Scanning for devices...")
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(heartRateManager.discoveredPeripherals, id: \.identifier) { peripheral in
+                        Button(action: {
+                            heartRateManager.connectToPeripheral(peripheral)
+                            isPresented = false
+                        }) {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(peripheral.name ?? "Unknown Device")
+                                        .font(.headline)
+                                    Text(peripheral.identifier.uuidString)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.blue)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+            }
+            
+            HStack {
+                Button("Cancel") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+                
+                Spacer()
+                
+                Button(heartRateManager.isScanning ? "Stop Scanning" : "Start Scanning") {
+                    if heartRateManager.isScanning {
+                        heartRateManager.stopScanning()
+                    } else {
+                        heartRateManager.startScanning()
+                    }
+                }
+            }
+            .padding()
+        }
+        .frame(width: 400, height: 500)
+        .onAppear {
+            if !heartRateManager.isScanning {
+                heartRateManager.startScanning()
+            }
+        }
+    }
+}
 
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
 }
