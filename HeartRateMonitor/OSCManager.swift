@@ -2,31 +2,6 @@ import Foundation
 import Network
 
 // MARK: - Heart Rate Manager
-class HeartRateManager {
-    // BPM with property observer to notify changes
-    var currentBPM: UInt16 = 80 {
-        didSet {
-            if oldValue != currentBPM {
-                bpmChangeHandlers.forEach { $0(currentBPM) }
-            }
-        }
-    }
-    
-    // Multiple handlers can be registered
-    private var bpmChangeHandlers: [(UInt16) -> Void] = []
-    
-    // Register a handler to be called when BPM changes
-    func onBPMChange(handler: @escaping (UInt16) -> Void) {
-        bpmChangeHandlers.append(handler)
-        // Immediately call with current value
-        handler(currentBPM)
-    }
-    
-    // Example method that might be called from sensor data
-    func updateFromSensor(newBPM: UInt16) {
-        currentBPM = newBPM
-    }
-}
 
 // MARK: - OSC Manager
 class NativeOSCManager {
@@ -140,25 +115,25 @@ class NativeOSCManager {
 }
 
 // MARK: - App Controller
-class AppController {
-    private let heartRateManager = HeartRateManager()
-    private let oscManager: NativeOSCManager
-    
-    init() {
-        // Initialize OSC with current heart rate
-        oscManager = NativeOSCManager(initialBPM: heartRateManager.currentBPM)
-        
-        // Register for BPM changes
-        heartRateManager.onBPMChange { [weak self] newBPM in
-            self?.oscManager.updateBPM(newBPM)
-        }
-    }
-    
+//class AppController {
+//    private let heartRateManager = HeartRateManager()
+//    private let oscManager: NativeOSCManager
+//    
+//    init() {
+//        // Initialize OSC with current heart rate
+//        //oscManager = NativeOSCManager(initialBPM: heartRateManager.currentBPM)
+//        
+//        // Register for BPM changes
+//        //heartRateManager.onBPMChange { [weak self] newBPM in
+//           // self?.oscManager.updateBPM(newBPM)
+//        }
+//    }
+//    
     // Example method that might be called from UI or sensor
     func updateHeartRate(to bpm: UInt16) {
-        heartRateManager.bpm = bpm
+       // heartRateManager.bpm = bpm
     }
-}
+
 
 // Usage example
 //let appController = AppController()
