@@ -1,12 +1,28 @@
 import SwiftUI
 
 struct StartScreen: View {
-    @StateObject private var player1 = PlayerCardViewModel(id: 1)
-    @StateObject private var player2 = PlayerCardViewModel(id: 2)
-    @StateObject private var player3 = PlayerCardViewModel(id: 3)
+    @StateObject private var player1: PlayerCardViewModel
+    @StateObject private var player2: PlayerCardViewModel
+    @StateObject private var player3: PlayerCardViewModel
 
     @State private var isReadyToStart = false
 
+    init(
+        player1: PlayerCardViewModel = PlayerCardViewModel(
+            id: 1,
+            deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!),
+        player2: PlayerCardViewModel = PlayerCardViewModel(
+            id: 2,
+            deviceUUID: UUID(uuidString: "8AB98DEC-C997-F432-9873-85FD2DEBD170")!),
+        player3: PlayerCardViewModel = PlayerCardViewModel(
+            id: 3,
+            deviceUUID: UUID(uuidString: "087AC373-A006-D6B6-26D3-4DD97728DAFF")!)
+    ) {
+        //You assign to _player1 once in init to tell SwiftUI “I’m giving you this object to manage,” and then you use player1 normally from there.
+        _player1 = StateObject(wrappedValue: player1)
+        _player2 = StateObject(wrappedValue: player2)
+        _player3 = StateObject(wrappedValue: player3)
+    }
     var body: some View {
         VStack(spacing: 40) {
             Text("Resonance")
@@ -35,11 +51,13 @@ struct StartScreen: View {
                 }
             }
         }
+    }
+}
+#Preview {
+    StartScreen(
+        player1: PlayerCardViewModel(id: 1, deviceUUID: UUID()),
+        player2: PlayerCardViewModel(id: 2, deviceUUID: UUID()),
+        player3: PlayerCardViewModel(id: 3, deviceUUID: UUID())
+    )
+}
 
-    }
-}
-struct StartScreen_Previews: PreviewProvider {
-    static var previews: some View {
-        StartScreen()
-    }
-}
