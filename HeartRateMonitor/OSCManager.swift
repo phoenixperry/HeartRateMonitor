@@ -1,41 +1,20 @@
-//
-//  NativeOSCManager.swift
-//  HeartRateMonitor
-//
-//  Created by Phoenix Perry on 2025-04-17.
-//
-
 import Foundation
 import Network
 
-// MARK: - NativeOSCManager
-
 class NativeOSCManager {
     private var connection: NWConnection?
-    private let defaultAddress = "/bpm"
     private var host: NWEndpoint.Host
     private var port: NWEndpoint.Port
 
-    init(ipAddress: String = "127.0.0.1", port: Int = 8000, initialBPM: UInt16 = 120) {
+    init(ipAddress: String = "127.0.0.1", port: Int = 8000) {
         self.host = NWEndpoint.Host(ipAddress)
         self.port = NWEndpoint.Port(integerLiteral: UInt16(port))
         setupConnection()
-
-        // Optional: Send initial BPM for verification
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.sendBPM(initialBPM)
-        }
     }
 
     deinit {
         connection?.cancel()
     }
-
-    var isConnected: Bool {
-        connection?.state == .ready
-    }
-
-    // MARK: - Connection Setup
 
     private func setupConnection() {
         connection = NWConnection(host: host, port: port, using: .udp)
@@ -43,18 +22,18 @@ class NativeOSCManager {
         connection?.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready:
-                print("📡 OSC connection ready")
+                print("OSC connection ready")
             case .failed(let error):
-                print("❌ OSC connection failed: \(error)")
+                print("OSC connection failed: \(error)")
                 self?.reconnect()
             case .cancelled:
-                print("⚠️ OSC connection cancelled")
+                print("OSC connection cancelled")
             default:
                 break
             }
         }
 
-        connection?.start(queue: DispatchQueue(label: "osc.connection.queue"))
+        connection?.start(queue: .global())
     }
 
     private func reconnect() {
@@ -62,32 +41,21 @@ class NativeOSCManager {
         setupConnection()
     }
 
-    // MARK: - Public Methods
+    // MARK: - Public API
 
-    func updateBPM(_ bpm: UInt16) {
-        sendBPM(bpm)
+    func sendBPM(forPlayer id: Int, bpm: UInt16) {
+        let address = "/player/\(id)/bpm"
+        sendOSCMessage(address: address, value: bpm)
     }
 
-    func send(_ value: UInt16, to address: String) {
-        sendOSCMessage(address: address, value: value)
-    }
-
-    func changeDestination(ipAddress: String, port: Int) {
-        self.host = NWEndpoint.Host(ipAddress)
-        self.port = NWEndpoint.Port(integerLiteral: UInt16(port))
-        connection?.cancel()
-        setupConnection()
-    }
-
-    // MARK: - Core OSC Message Handling
-
-    func sendBPM(_ bpm: UInt16) {
-        sendOSCMessage(address: defaultAddress, value: bpm)
+    func sendGroupBPMs(_ bpmValues: [UInt16]) {
+        let address = "/wek/bpm"
+        sendOSCMessage(address: address, values: bpmValues)
     }
 
     private func sendOSCMessage(address: String, value: UInt16) {
         guard let connection = connection, connection.state == .ready else {
-            print("⚠️ OSC connection not ready")
+            print("OSC connection not ready")
             return
         }
 
@@ -95,60 +63,58 @@ class NativeOSCManager {
 
         connection.send(content: data, completion: .contentProcessed { error in
             if let error = error {
-                print("❌ Failed to send OSC message: \(error)")
-            } else {
-                print("📨 Sent OSC to \(address): \(value)")
+                print("Failed to send OSC message: \(error)")
             }
         })
     }
 
+    private func sendOSCMessage(address: String, values: [UInt16]) {
+        guard let connection = connection, connection.state == .ready else {
+            print("OSC connection not ready")
+            return
+        }
+
+        let data = createOSCBundle(address: address, values: values)
+
+        connection.send(content: data, completion: .contentProcessed { error in
+            if let error = error {
+                print("Failed to send OSC bundle: \(error)")
+            }
+        })
+    }
+
+    // MARK: - OSC Packing
+
     private func createOSCMessage(address: String, value: UInt16) -> Data {
         var data = Data()
+        data.append(paddedString(address))
+        data.append(paddedString(",i"))
 
-        // 1. OSC Address Pattern
-        data.append(address.data(using: .utf8)!)
-        let addressPadding = (4 - (address.count % 4)) % 4
-        data.append(contentsOf: [UInt8](repeating: 0, count: addressPadding))
-
-        // 2. OSC Type Tag String
-        let typeTag = ",i"
-        data.append(typeTag.data(using: .utf8)!)
-        let typePadding = (4 - (typeTag.count % 4)) % 4
-        data.append(contentsOf: [UInt8](repeating: 0, count: typePadding))
-
-        // 3. OSC Arguments (32-bit integer value)
         var int32Value = Int32(value).bigEndian
         data.append(Data(bytes: &int32Value, count: MemoryLayout<Int32>.size))
 
         return data
     }
-}
 
+    private func createOSCBundle(address: String, values: [UInt16]) -> Data {
+        var data = Data()
+        data.append(paddedString(address))
+        data.append(paddedString("," + String(repeating: "i", count: values.count)))
 
-// MARK: - App Controller
-//class AppController {
-//    private let heartRateManager = HeartRateManager()
-//    private let oscManager: NativeOSCManager
-//    
-//    init() {
-//        // Initialize OSC with current heart rate
-//        //oscManager = NativeOSCManager(initialBPM: heartRateManager.currentBPM)
-//        
-//        // Register for BPM changes
-//        //heartRateManager.onBPMChange { [weak self] newBPM in
-//           // self?.oscManager.updateBPM(newBPM)
-//        }
-//    }
-//    
-    // Example method that might be called from UI or sensor
-    func updateHeartRate(to bpm: UInt16) {
-       // heartRateManager.bpm = bpm
+        for value in values {
+            var int32Value = Int32(value).bigEndian
+            data.append(Data(bytes: &int32Value, count: MemoryLayout<Int32>.size))
+        }
+
+        return data
     }
 
-
-// Usage example
-//let appController = AppController()
-
-// When heart rate changes (e.g., from sensor or UI):
-//appController.updateHeartRate(to: 85)
-
+    private func paddedString(_ string: String) -> Data {
+        var data = string.data(using: .utf8)!
+        let pad = 4 - (data.count % 4)
+        if pad < 4 {
+            data.append(contentsOf: [UInt8](repeating: 0, count: pad))
+        }
+        return data
+    }
+}

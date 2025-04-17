@@ -18,7 +18,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     @Published var heartRate: Int = 0
 
     private let heartRateManager = HeartRateManager()
-    private let oscManager = NativeOSCManager()
+    let oscManager = NativeOSCManager()
     
     init(id: Int, deviceUUID: UUID) {
         self.id = id
@@ -50,9 +50,12 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
             self.heartRate = Int(bpm)
 
             if self.hasStartedPlay {
-                self.oscManager.send(bpm, to: "/player/\(self.id)/bpm")
+                self.oscManager.sendBPM(forPlayer: self.id, bpm: bpm)
             }
             print("📡 Sending OSC BPM: \(bpm) to /player/\(self.id)/bpm")
+            
+            //for wekinator
+            //oscManager.sendGroupBPMs([player1HR, player2HR, player3HR])
 //            If the BLE device sometimes sends the same BPM multiple times in a row (which it might), and you only want to send when the value changes, you could do:
 //            if self.hasStartedPlay && bpm != self.heartRate {
 //                self.oscManager.send(bpm, to: "/player/\(self.id)/bpm")
@@ -83,8 +86,6 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
     func startPlay() {
         hasStartedPlay = true
-        // ✅ Hook into logger, animation, sound
-        // Optionally send one initial OSC message immediately
-        oscManager.send(UInt16(heartRate), to: "/player/\(id)/bpm")
     }
+
 }
