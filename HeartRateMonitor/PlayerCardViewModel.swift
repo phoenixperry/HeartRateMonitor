@@ -16,7 +16,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     @Published var isConnected: Bool = false
     @Published var hasStartedPlay: Bool = false
     @Published var heartRate: Int = 0
-
+   
     private let heartRateManager = HeartRateManager()
     let oscManager = NativeOSCManager()
     
@@ -51,6 +51,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
             if self.hasStartedPlay {
                 self.oscManager.sendBPM(forPlayer: self.id, bpm: bpm)
+                // wherever you get new heartRate data:
             }
             print("📡 Sending OSC BPM: \(bpm) to /player/\(self.id)/bpm")
             

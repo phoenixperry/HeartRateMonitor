@@ -15,7 +15,7 @@ class NativeOSCManager {
     deinit {
         connection?.cancel()
     }
-
+//this is the way swift checks to see if something it not NIL and it's called optional channing
     private func setupConnection() {
         connection = NWConnection(host: host, port: port, using: .udp)
 
@@ -47,12 +47,13 @@ class NativeOSCManager {
         let address = "/player/\(id)/bpm"
         sendOSCMessage(address: address, value: bpm)
     }
-
+    // specific for wekinator
     func sendGroupBPMs(_ bpmValues: [UInt16]) {
         let address = "/wek/bpm"
         sendOSCMessage(address: address, values: bpmValues)
     }
 
+    //guard means "Only run if this is true. Check this condition, and if it fails, bail out now. AKA if it's bad, get out now! AKA you at 2 with the fire."
     private func sendOSCMessage(address: String, value: UInt16) {
         guard let connection = connection, connection.state == .ready else {
             print("OSC connection not ready")

@@ -4,8 +4,14 @@ struct StartScreen: View {
     @StateObject private var player1: PlayerCardViewModel
     @StateObject private var player2: PlayerCardViewModel
     @StateObject private var player3: PlayerCardViewModel
+    @StateObject private var espManager = ESPPeripheralManager()
 
     @State private var isReadyToStart = false
+    @State private var showSerialPicker = false
+    @StateObject private var serialManager = SerialManager()
+  //,  @StateObject var espManager = ESPPeripheralManager()
+
+    let manager = SerialManager()
 
     init(
         player1: PlayerCardViewModel = PlayerCardViewModel(
@@ -22,19 +28,22 @@ struct StartScreen: View {
         _player1 = StateObject(wrappedValue: player1)
         _player2 = StateObject(wrappedValue: player2)
         _player3 = StateObject(wrappedValue: player3)
+//        manager.refreshPorts()
+//        manager.connect(to: manager.availablePorts.first!)
+//        manager.send("motor on\r\n")
     }
     var body: some View {
         VStack(spacing: 40) {
             Text("Resonance")
                 .font(.largeTitle)
                 .bold()
-
+            
             HStack(spacing: 30) {
                 PlayerCardView(viewModel: player1)
                 PlayerCardView(viewModel: player2)
                 PlayerCardView(viewModel: player3)
             }
-
+            
             if isReadyToStart {
                 Text("All monitors connected. Starting...")
                     .font(.headline)
@@ -44,13 +53,24 @@ struct StartScreen: View {
         .padding()
         .onChange(of: [player1.isConnected, player2.isConnected, player3.isConnected]) {
             isReadyToStart = player1.isConnected && player2.isConnected && player3.isConnected
-
+            
             if isReadyToStart {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     // Transition to Game Screen goes here
                 }
             }
         }
+        Button("Turn on the vibes"){
+            serialManager.refreshPorts()
+            showSerialPicker = true
+            
+        }
+        .buttonStyle(.plain)
+        .padding()
+//        .sheet(isPresented: $showSerialPicker){
+//            SerialDevicePicker(serialManager: serialManager,
+//                               isPresented: $showSerialPicker)
+//        }
     }
 }
 #Preview {
