@@ -92,4 +92,19 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
             }
         }
     }
+    
+    func sendGroupBPMs(_ bpmValues: [Int]) {
+        guard let peripheral = espPeripheral,
+              let characteristic = bpmCharacteristic,
+              peripheral.state == .connected else {
+            print("⚠️ ESP32 not connected")
+            return
+        }
+
+        let bpmString = bpmValues.map { String($0) }.joined(separator: ",")
+        if let data = bpmString.data(using: .utf8) {
+            peripheral.writeValue(data, for: characteristic, type: .withResponse)
+            print("📡 Sent group BPMs: \(bpmString)")
+        }
+    }
 }

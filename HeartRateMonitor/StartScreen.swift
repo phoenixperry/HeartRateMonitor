@@ -8,10 +8,12 @@ struct StartScreen: View {
 
     @State private var isReadyToStart = false
     @State private var showSerialPicker = false
-    @StateObject private var serialManager = SerialManager()
-  //,  @StateObject var espManager = ESPPeripheralManager()
+    @State private var lastSentBPMs: [Int] = [0, 0, 0]
+    @State private var bpmValues: [Int] = [0,0,0]
+//    @StateObject private var serialManager = SerialManager()
+ 
 
-    let manager = SerialManager()
+//    let manager = SerialManager()
 
     init(
         player1: PlayerCardViewModel = PlayerCardViewModel(
@@ -51,9 +53,14 @@ struct StartScreen: View {
             }
         }
         .padding()
+        .onChange(of: [player1.heartRate, player2.heartRate, player3.heartRate]) { oldBPMs, newBPMs in
+            if newBPMs != lastSentBPMs {
+                espManager.sendGroupBPMs(newBPMs)
+                lastSentBPMs = newBPMs
+            }
+        }
         .onChange(of: [player1.isConnected, player2.isConnected, player3.isConnected]) {
             isReadyToStart = player1.isConnected && player2.isConnected && player3.isConnected
-            
             if isReadyToStart {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     // Transition to Game Screen goes here
@@ -61,8 +68,8 @@ struct StartScreen: View {
             }
         }
         Button("Turn on the vibes"){
-            serialManager.refreshPorts()
-            showSerialPicker = true
+//            serialManager.refreshPorts()
+//            showSerialPicker = true
             
         }
         .buttonStyle(.plain)
