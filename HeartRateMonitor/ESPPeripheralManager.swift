@@ -92,7 +92,6 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
             }
         }
     }
-    
     func sendGroupBPMs(_ bpmValues: [Int]) {
         guard let peripheral = espPeripheral,
               let characteristic = bpmCharacteristic,

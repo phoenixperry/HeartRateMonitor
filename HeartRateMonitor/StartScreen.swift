@@ -21,7 +21,9 @@ struct StartScreen: View {
             deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!),
         player2: PlayerCardViewModel = PlayerCardViewModel(
             id: 2,
-            deviceUUID: UUID(uuidString: "8AB98DEC-C997-F432-9873-85FD2DEBD170")!),
+            deviceUUID: UUID(uuidString: "939617A2-BF34-DA9C-A319-13A252EB4684")!),
+            //chest strap
+//            deviceUUID: UUID(uuidString: "8AB98DEC-C997-F432-9873-85FD2DEBD170")!),
         player3: PlayerCardViewModel = PlayerCardViewModel(
             id: 3,
             deviceUUID: UUID(uuidString: "087AC373-A006-D6B6-26D3-4DD97728DAFF")!)

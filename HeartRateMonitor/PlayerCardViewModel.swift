@@ -35,6 +35,16 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 //    func connect() {
 //        heartRateManager.connectToPeripheral(with: deviceUUID)
 //   }
+    func sendOSC(bpm: Int) {
+        guard hasStartedPlay else { return }
+
+        // Optional: filter out obviously invalid BPMs
+        guard bpm > 0 && bpm < 240 else { return }
+
+        // Send once per beat — only called from animation loop
+        oscManager.sendBPM(forPlayer: id, bpm: UInt16(bpm))
+        print("📡 Sent OSC BPM: \(bpm) to /player/\(id)/bpm")
+    }
     func connect() {
         hasStartedPlay = false
         isConnected = false
