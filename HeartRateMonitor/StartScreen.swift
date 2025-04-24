@@ -1,53 +1,54 @@
 import SwiftUI
 
 struct StartScreen: View {
+    @StateObject private var espManager = ESPPeripheralManager()
+
     @StateObject private var player1: PlayerCardViewModel
     @StateObject private var player2: PlayerCardViewModel
     @StateObject private var player3: PlayerCardViewModel
-    @StateObject private var espManager = ESPPeripheralManager()
 
     @State private var isReadyToStart = false
     @State private var showSerialPicker = false
     @State private var lastSentBPMs: [Int] = [0, 0, 0]
-    @State private var bpmValues: [Int] = [0,0,0]
-//    @StateObject private var serialManager = SerialManager()
- 
+    @State private var bpmValues: [Int] = [0, 0, 0]
 
-//    let manager = SerialManager()
+    init() {
+        // Create a shared ESPPeripheralManager instance
+        let espManager = ESPPeripheralManager()
 
-    init(
-        player1: PlayerCardViewModel = PlayerCardViewModel(
+        _espManager = StateObject(wrappedValue: espManager)
+
+        _player1 = StateObject(wrappedValue: PlayerCardViewModel(
             id: 1,
-            deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!),
-        player2: PlayerCardViewModel = PlayerCardViewModel(
+            deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
+            espManager: espManager
+        ))
+
+        _player2 = StateObject(wrappedValue: PlayerCardViewModel(
             id: 2,
-            deviceUUID: UUID(uuidString: "939617A2-BF34-DA9C-A319-13A252EB4684")!),
-            //chest strap
-//            deviceUUID: UUID(uuidString: "8AB98DEC-C997-F432-9873-85FD2DEBD170")!),
-        player3: PlayerCardViewModel = PlayerCardViewModel(
+            deviceUUID: UUID(uuidString: "939617A2-BF34-DA9C-A319-13A252EB4684")!,
+            espManager: espManager
+        ))
+
+        _player3 = StateObject(wrappedValue: PlayerCardViewModel(
             id: 3,
-            deviceUUID: UUID(uuidString: "087AC373-A006-D6B6-26D3-4DD97728DAFF")!)
-    ) {
-        //You assign to _player1 once in init to tell SwiftUI “I’m giving you this object to manage,” and then you use player1 normally from there.
-        _player1 = StateObject(wrappedValue: player1)
-        _player2 = StateObject(wrappedValue: player2)
-        _player3 = StateObject(wrappedValue: player3)
-//        manager.refreshPorts()
-//        manager.connect(to: manager.availablePorts.first!)
-//        manager.send("motor on\r\n")
+            deviceUUID: UUID(uuidString: "087AC373-A006-D6B6-26D3-4DD97728DAFF")!,
+            espManager: espManager
+        ))
     }
+
     var body: some View {
         VStack(spacing: 40) {
             Text("Resonance")
                 .font(.largeTitle)
                 .bold()
-            
+
             HStack(spacing: 30) {
                 PlayerCardView(viewModel: player1)
                 PlayerCardView(viewModel: player2)
                 PlayerCardView(viewModel: player3)
             }
-            
+
             if isReadyToStart {
                 Text("All monitors connected. Starting...")
                     .font(.headline)
@@ -55,12 +56,12 @@ struct StartScreen: View {
             }
         }
         .padding()
-        .onChange(of: [player1.heartRate, player2.heartRate, player3.heartRate]) { oldBPMs, newBPMs in
-            if newBPMs != lastSentBPMs {
-                espManager.sendGroupBPMs(newBPMs)
-                lastSentBPMs = newBPMs
-            }
-        }
+//        .onChange(of: [player1.heartRate, player2.heartRate, player3.heartRate]) { oldBPMs, newBPMs in
+//            if newBPMs != lastSentBPMs {
+//                espManager.sendGroupBPMs(newBPMs)
+//                lastSentBPMs = newBPMs
+//            }
+//        }
         .onChange(of: [player1.isConnected, player2.isConnected, player3.isConnected]) {
             isReadyToStart = player1.isConnected && player2.isConnected && player3.isConnected
             if isReadyToStart {
@@ -69,24 +70,16 @@ struct StartScreen: View {
                 }
             }
         }
-        Button("Turn on the vibes"){
-//            serialManager.refreshPorts()
-//            showSerialPicker = true
-            
+
+        Button("Turn on the vibes") {
+            // Future: open serial picker or something cool
         }
         .buttonStyle(.plain)
         .padding()
-//        .sheet(isPresented: $showSerialPicker){
-//            SerialDevicePicker(serialManager: serialManager,
-//                               isPresented: $showSerialPicker)
-//        }
     }
 }
+
 #Preview {
-    StartScreen(
-        player1: PlayerCardViewModel(id: 1, deviceUUID: UUID()),
-        player2: PlayerCardViewModel(id: 2, deviceUUID: UUID()),
-        player3: PlayerCardViewModel(id: 3, deviceUUID: UUID())
-    )
+    StartScreen()
 }
 

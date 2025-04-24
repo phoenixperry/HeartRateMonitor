@@ -216,7 +216,7 @@ extension HeartRateManager: CBPeripheralDelegate {
             bpm = UInt16(data[1]) | (UInt16(data[2]) << 8)
         }
 
-        print("❤️ Heart Rate: \(bpm) BPM")
+//        print("❤️ Heart Rate: \(bpm) BPM")
 
         DispatchQueue.main.async {
             self.heartRate = bpm

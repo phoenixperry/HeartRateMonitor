@@ -31,7 +31,7 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         let bpmString = "\(bpm)"
         if let data = bpmString.data(using: .utf8) {
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
-            print("📡 Sent BPM: \(bpmString)")
+//            print("📡 Sent BPM: \(bpmString)")
         }
     }
 
@@ -103,7 +103,7 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         let bpmString = bpmValues.map { String($0) }.joined(separator: ",")
         if let data = bpmString.data(using: .utf8) {
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
-            print("📡 Sent group BPMs: \(bpmString)")
+//            print("📡 Sent group BPMs: \(bpmString)")
         }
     }
 }

@@ -23,22 +23,6 @@ struct PlayerCardView: View {
         pulse = false
     }
     
-    func startAnimationLoop(){
-        animationTimer?.invalidate()
-        
-        animationTimer = Timer.scheduledTimer(withTimeInterval: beatDuration(for: currentBPM), repeats: true) { _ in
-            if currentBPM == 0 {
-                stopAnimation()
-                return
-            }
-            //animate the circle
-            withAnimation(.easeInOut(duration: 0.3)) {
-                pulse.toggle()
-            }
-            
-            viewModel.sendOSC(bpm:currentBPM)
-        }
-    }
     var body: some View {
         VStack(spacing: 20) {
             let seconds = Calendar.current.component(.second, from: now)
@@ -49,27 +33,10 @@ struct PlayerCardView: View {
             ZStack{
             // Optional heart rate circle
             if viewModel.hasStartedPlay {
-//                Circle()
-//                    .fill(Color.pink)
-//                    .frame(width: 140, height: 140)
-//                    .scaleEffect(pulse ? 1.1 : 0.9)
-//                     .overlay(
-//                         Text("\(viewModel.heartRate) bpm")
-//                             .font(.caption)
-//                             .foregroundColor(.white)
-//                     )
-//                     .shadow(radius: 10)
-//                     .scaleEffect(pulse ? 1.1 : 0.9)
-//                     .animation(
-//                         .easeInOut(duration: bpmDuration).repeatForever(autoreverses: true),
-//                         value: pulse
-//                     )
-//                     .onAppear {
-//                         pulse = true
-//                     }
-                
+
                 WaveformBreathingCircle(bpm: $viewModel.heartRate) {
-                             viewModel.sendOSC(bpm: viewModel.heartRate)
+                    viewModel.cycleDidComplete()
+//                    print("✅ cycleDidComplete triggered for player \(viewModel.id)")
                          }
                          .frame(width: 140, height: 140)
                          .overlay(
@@ -164,6 +131,7 @@ struct PlayerCardView: View {
 #Preview {
     PlayerCardView(viewModel: PlayerCardViewModel(
         id: 1,
-        deviceUUID: UUID()
+        deviceUUID: UUID(),
+        espManager: ESPPeripheralManager()
     ))
 }

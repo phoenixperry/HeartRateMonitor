@@ -1,44 +1,53 @@
 import SwiftUI
 
 struct WaveformBreathingCircle: View {
+
     @Binding var bpm: Int
+
+    //this is the syntax to give a view the option to pass a function in here as callback. It's optional and if it is not used, it returns nil. From PlayerCardView, you're passing a closure (a function) as the argument to onCycleComplete.That closure gets run once per beat cycle, and that's when you: Send OSC, Send Bluetooth, Trigger a haptic motor
+
     var onCycleComplete: (() -> Void)? = nil
 
     @State private var currentBPM: Int = 0
     @State private var pendingBPM: Int? = nil
     @State private var lastCycleTime: Date = Date()
     @State private var lastProgress: Double = 0
-
+    @State private var hasTriggeredCycle = false
+    
     private let minScale: CGFloat = 0.8
     private let maxScale: CGFloat = 1.2
 
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let now = timeline.date
-            let progress = currentCycleProgress(at: now)
-
+        let now = TimelineView.date
+        let progress = currentCycleProgress(at: now)
+        let scale = scale(for: progress)
+//        detect full waveform cycle (wraps from ~1 to ~0)
+//         Detect full waveform cycle (wraps from ~1 to ~0)
+            if progress < 0.05 && !hasTriggeredCycle {
+                DispatchQueue.main.async {
+                    hasTriggeredCycle = true
+                    cycleCompleted(at: now)
+                }
+            } else if progress > 0.1 {
+                DispatchQueue.main.async {
+                    hasTriggeredCycle = false
+                }
+            }
+        TimelineView(.animation) { context in
             ZStack {
                 Circle()
                     .fill(Color.pink)
-                    .scaleEffect(scale(for: progress))
-                    .animation(.linear(duration: 1.0 / 60.0), value: progress)
-                    .onAppear {
-                        currentBPM = bpm
-                        lastCycleTime = now
-                        lastProgress = progress
-                    }
-                    .onChange(of: bpm) { oldBPM, newBPM in
-                        if newBPM != oldBPM {
-                            pendingBPM = newBPM
-                        }
-                    }
-                    .onChange(of: progress) { oldProgress, newProgress in
-                        // Detect the cycle wrap-around (e.g., 0.98 → 0.01)
-                        if newProgress < oldProgress {
-                            cycleCompleted(at: now)
-                        }
-                        lastProgress = newProgress
-                    }
+                    .scaleEffect(scale)
+                    .animation(.easeInOut(duration: 1.0 / 60.0), value: scale)
+            }
+        }
+        .onAppear {
+            currentBPM = bpm
+            lastCycleTime = Date()
+        }
+        .onChange(of: bpm) { oldBPM, newBPM in
+            if newBPM != oldBPM {
+                pendingBPM = newBPM
             }
         }
     }
@@ -60,9 +69,8 @@ struct WaveformBreathingCircle: View {
     }
 
     private func cycleCompleted(at now: Date) {
-        onCycleComplete?()
         lastCycleTime = now
-
+        onCycleComplete?()
         if let newBPM = pendingBPM {
             currentBPM = newBPM
             pendingBPM = nil
