@@ -1,41 +1,16 @@
 import SwiftUI
 
 struct StartScreen: View {
-    @StateObject private var espManager = ESPPeripheralManager()
+    @ObservedObject var player1: PlayerCardViewModel
+    @ObservedObject var player2: PlayerCardViewModel
+    @ObservedObject var player3: PlayerCardViewModel
 
-    @StateObject private var player1: PlayerCardViewModel
-    @StateObject private var player2: PlayerCardViewModel
-    @StateObject private var player3: PlayerCardViewModel
+    @ObservedObject var espManager: ESPPeripheralManager
 
     @State private var isReadyToStart = false
     @State private var showSerialPicker = false
     @State private var lastSentBPMs: [Int] = [0, 0, 0]
     @State private var bpmValues: [Int] = [0, 0, 0]
-
-    init() {
-        // Create a shared ESPPeripheralManager instance
-        let espManager = ESPPeripheralManager()
-
-        _espManager = StateObject(wrappedValue: espManager)
-
-        _player1 = StateObject(wrappedValue: PlayerCardViewModel(
-            id: 1,
-            deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
-            espManager: espManager
-        ))
-
-        _player2 = StateObject(wrappedValue: PlayerCardViewModel(
-            id: 2,
-            deviceUUID: UUID(uuidString: "939617A2-BF34-DA9C-A319-13A252EB4684")!,
-            espManager: espManager
-        ))
-
-        _player3 = StateObject(wrappedValue: PlayerCardViewModel(
-            id: 3,
-            deviceUUID: UUID(uuidString: "087AC373-A006-D6B6-26D3-4DD97728DAFF")!,
-            espManager: espManager
-        ))
-    }
 
     var body: some View {
         VStack(spacing: 40) {
@@ -51,7 +26,7 @@ struct StartScreen: View {
 
             if isReadyToStart {
                 Text("All monitors connected. Starting...")
-                    .font(.headline)
+                    .font(.caption)
                     .foregroundColor(.green)
             }
         }
@@ -62,7 +37,7 @@ struct StartScreen: View {
 //                lastSentBPMs = newBPMs
 //            }
 //        }
-        .onChange(of: [player1.isConnected, player2.isConnected, player3.isConnected]) {
+        .onChange(of: [player1.isConnected, player2.isConnected, player3.isConnected]) { _, _ in
             isReadyToStart = player1.isConnected && player2.isConnected && player3.isConnected
             if isReadyToStart {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -80,6 +55,27 @@ struct StartScreen: View {
 }
 
 #Preview {
-    StartScreen()
-}
+    let espManager = ESPPeripheralManager()
+    let player1 = PlayerCardViewModel(
+        id: 1,
+        deviceUUID: UUID(),
+        espManager: espManager
+    )
+    let player2 = PlayerCardViewModel(
+        id: 2,
+        deviceUUID: UUID(),
+        espManager: espManager
+    )
+    let player3 = PlayerCardViewModel(
+        id: 3,
+        deviceUUID: UUID(),
+        espManager: espManager
+    )
 
+    return StartScreen(
+        player1: player1,
+        player2: player2,
+        player3: player3,
+        espManager: espManager
+    )
+}

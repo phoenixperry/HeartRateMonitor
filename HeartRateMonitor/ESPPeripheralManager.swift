@@ -106,4 +106,10 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
 //            print("📡 Sent group BPMs: \(bpmString)")
         }
     }
+    func disconnectCurrentPeripheral() {
+        if let peripheral = espPeripheral, peripheral.state == .connected {
+            centralManager.cancelPeripheralConnection(peripheral)
+            print("🔌 Manually disconnected ESP32")
+        }
+    }
 }
