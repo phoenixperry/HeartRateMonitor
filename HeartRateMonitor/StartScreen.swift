@@ -31,12 +31,7 @@ struct StartScreen: View {
             }
         }
         .padding()
-//        .onChange(of: [player1.heartRate, player2.heartRate, player3.heartRate]) { oldBPMs, newBPMs in
-//            if newBPMs != lastSentBPMs {
-//                espManager.sendGroupBPMs(newBPMs)
-//                lastSentBPMs = newBPMs
-//            }
-//        }
+
         .onChange(of: [player1.isConnected, player2.isConnected, player3.isConnected]) { _, _ in
             isReadyToStart = player1.isConnected && player2.isConnected && player3.isConnected
             if isReadyToStart {
