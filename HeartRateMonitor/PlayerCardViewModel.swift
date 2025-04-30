@@ -9,7 +9,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     @Published var isConnected: Bool = false
     @Published var hasStartedPlay: Bool = false
     @Published var heartRate: Int = 0
-
+    @State var shouldAnimate = false
     private var lastSentBPM: Int = 0
     private let oscQueue = DispatchQueue(label: "oscQueue", qos: .userInitiated)
     private let bluetoothQueue = DispatchQueue(label: "bluetoothQueue", qos: .userInitiated)
@@ -68,6 +68,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         hasStartedPlay = false
         isConnected = false
         heartRate = 0
+        shouldAnimate = true
 
         heartRateManager.onConnect = { [weak self] in
             self?.isConnected = true
@@ -88,6 +89,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         heartRateManager.disconnectCurrentPeripheral()
         isConnected = false
         hasStartedPlay = false
+        shouldAnimate = false
     }
 
     func startPlay() {

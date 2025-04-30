@@ -6,6 +6,7 @@ struct PlayerCardView: View {
     @State private var currentBPM: Int = 0
     @State private var pendingBPM: Int = 0
     @State private var animationTimer: Timer?
+    @State private var shouldAnimate = false
     let now = Date()
     var bpmDuration: Double {
         guard viewModel.heartRate > 0 else { return 1.0 }
@@ -34,9 +35,10 @@ struct PlayerCardView: View {
             // Optional heart rate circle
             if viewModel.hasStartedPlay {
 
-                WaveformBreathingCircle(bpm: $viewModel.heartRate) {
+                WaveformBreathingCircle(bpm: $viewModel.heartRate, shouldAnimate: $shouldAnimate) {
                     viewModel.cycleDidComplete()
 //                    print("✅ cycleDidComplete triggered for player \(viewModel.id)")
+                    print(shouldAnimate)
                          }
                          .frame(width: 140, height: 140)
                          .overlay(
@@ -63,8 +65,10 @@ struct PlayerCardView: View {
                     pendingBPM = 0
                 } else {
                     pendingBPM = newBPM
+                    
                 }
             }
+
           
 //            .onChange(of: viewModel.heartRate) {oldBPM, newBPM in
 //                if newBPM == 0{
@@ -93,6 +97,7 @@ struct PlayerCardView: View {
                 .disabled(viewModel.isConnected)
                 
                 Button(action: {
+                    //shouldAnimate = false
                     viewModel.disconnect()
                 }) {
                     Text("Disconnect")
@@ -104,6 +109,7 @@ struct PlayerCardView: View {
 
             Button(action: {
                 viewModel.startPlay()
+                shouldAnimate = true
             }) {
                 Text(viewModel.hasStartedPlay ? "You're in the group" : "Join the group!")
                     .frame(width: 150, height: 44)
