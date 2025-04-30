@@ -9,7 +9,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     @Published var isConnected: Bool = false
     @Published var hasStartedPlay: Bool = false
     @Published var heartRate: Int = 0
-    @State var shouldAnimate = false
+    
     private var lastSentBPM: Int = 0
     private let oscQueue = DispatchQueue(label: "oscQueue", qos: .userInitiated)
     private let bluetoothQueue = DispatchQueue(label: "bluetoothQueue", qos: .userInitiated)
@@ -49,51 +49,59 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
             guard bpmToSend > 0 && bpmToSend < 240 else { return }
 
             self.oscManager.sendBPM(forPlayer: self.id, bpm: UInt16(bpmToSend))
-            self.sendBPMToESP(bpmToSend) // Optional: send to ESP too
+            self.sendBPMToESP(bpmToSend)
             print("📡 Thread-safe: Sent BPM \(bpmToSend) to OSC and ESP")
         }
     }
 
-//    func sendOSC(bpm: Int) {
-//        guard hasStartedPlay else { return }
-//        guard bpm > 0 && bpm < 240 else { return }
-//
-//        oscManager.sendBPM(forPlayer: id, bpm: UInt16(bpm))
-//        print("📡 Sent OSC BPM: \(bpm) to /player/\(id)/bpm")
-//    }
-
     // MARK: - Bluetooth Lifecycle
 
     func connect() {
+        // Reset state
         hasStartedPlay = false
         isConnected = false
         heartRate = 0
-        shouldAnimate = true
-
+        
+        // Set up callbacks
         heartRateManager.onConnect = { [weak self] in
-            self?.isConnected = true
+            DispatchQueue.main.async {
+                self?.isConnected = true
+                print("✅ Player \(self?.id ?? 0) connected")
+            }
         }
 
         heartRateManager.onHeartRateUpdate = { [weak self] bpm in
             guard let self = self else { return }
-            self.heartRate = Int(bpm)
-//            if self.hasStartedPlay {
-//                self.sendOSC(bpm: Int(bpm))
-//            }
+            
+            DispatchQueue.main.async {
+                // Only update if value changed to avoid unnecessary view updates
+                if self.heartRate != Int(bpm) {
+                    self.heartRate = Int(bpm)
+                    print("❤️ Player \(self.id) HR: \(self.heartRate)")
+                }
+            }
         }
 
+        // Attempt connection
+        print("🔗 Connecting Player \(id) to device: \(deviceUUID)")
         heartRateManager.connectToPeripheral(with: deviceUUID)
     }
 
     func disconnect() {
         heartRateManager.disconnectCurrentPeripheral()
-        isConnected = false
-        hasStartedPlay = false
-        shouldAnimate = false
+        
+        DispatchQueue.main.async {
+            self.isConnected = false
+            self.hasStartedPlay = false
+            self.heartRate = 0
+            print("🔌 Player \(self.id) disconnected")
+        }
     }
 
     func startPlay() {
-        hasStartedPlay = true
+        DispatchQueue.main.async {
+            self.hasStartedPlay = true
+            print("▶️ Player \(self.id) started play")
+        }
     }
 }
-
