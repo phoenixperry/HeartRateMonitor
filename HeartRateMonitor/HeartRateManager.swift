@@ -54,6 +54,7 @@ class HeartRateManager: NSObject, ObservableObject {
         heartRatePeripheral = peripheral
         peripheral.delegate = self
         centralManager.connect(peripheral, options: nil)
+//        print(self.heartRateServiceUUID)
     }
 
     /// 🔗 NEW: Connect directly to known device UUID

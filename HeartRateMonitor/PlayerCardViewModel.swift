@@ -35,21 +35,34 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     }
 
     func cycleDidComplete() {
-        guard hasStartedPlay else { return }
-
+        //Only process if player is actively in play mode
+        guard hasStartedPlay, isConnected else { return }
+        // Capture value once to ensure consistency
         let bpmToSend = heartRate
 
-        // Only send if BPM changed
-        guard bpmToSend != lastSentBPM else { return }
+        // Skip if no meaningful data to send or no change
+        guard bpmToSend > 0 && bpmToSend != lastSentBPM else { return }
 
         lastSentBPM = bpmToSend
+        // Log on main thread to avoid console corruption
+         print("🔄 Player \(id) cycle complete - BPM: \(bpmToSend)")
 
         oscQueue.async { [weak self] in
             guard let self = self else { return }
-            guard bpmToSend > 0 && bpmToSend < 240 else { return }
-
+         //   guard bpmToSend > 0 && bpmToSend < 240 else { return }
+            
+            // Double-check value range on background thread
+//              guard bpmToSend > 0 && bpmToSend < 240 else {
+//                  print("⚠️ BPM out of range: \(bpmToSend)")
+//                  return
+//              }
+            //send OSC
             self.oscManager.sendBPM(forPlayer: self.id, bpm: UInt16(bpmToSend))
-            self.sendBPMToESP(bpmToSend)
+            }
+        // Send to ESP on separate queue to prevent blocking
+        self.bluetoothQueue.async {
+            self.espManager.send(bpm: bpmToSend)
+                  
             print("📡 Thread-safe: Sent BPM \(bpmToSend) to OSC and ESP")
         }
     }

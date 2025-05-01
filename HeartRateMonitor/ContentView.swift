@@ -13,6 +13,7 @@ struct ContentView: View {
             player3: player3,
             espManager: espManager
         )
+//        SingleHeartRateUI()
     }
 }
 

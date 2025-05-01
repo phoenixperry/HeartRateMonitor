@@ -16,7 +16,9 @@ struct HeartRateMonitorApp: App {
         // Initialize players with the shared ESP manager
         player1 = PlayerCardViewModel(
             id: 1,
-            deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
+            deviceUUID: UUID(uuidString:
+            "5C597A63-FA35-7537-56F5-254229B48FF3")!,
+                                //"5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
             espManager: espManager
         )
 
@@ -28,7 +30,9 @@ struct HeartRateMonitorApp: App {
 
         player3 = PlayerCardViewModel(
             id: 3,
-            deviceUUID: UUID(uuidString: "087AC373-A006-D6B6-26D3-4DD97728DAFF")!,
+            deviceUUID: UUID(uuidString:
+                                "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
+            //087AC373-A006-D6B6-26D3-4DD97728DAFF")!,
             espManager: espManager
         )
 
