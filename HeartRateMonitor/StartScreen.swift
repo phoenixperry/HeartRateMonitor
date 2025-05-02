@@ -1,17 +1,9 @@
 import SwiftUI
 
 struct StartScreen: View {
-    @ObservedObject var player1: PlayerCardViewModel
-    @ObservedObject var player2: PlayerCardViewModel
-    @ObservedObject var player3: PlayerCardViewModel
-
-    @ObservedObject var espManager: ESPPeripheralManager
-
-    @State private var isReadyToStart = false
+    @ObservedObject var gameStateManager: GameStateManager
     @State private var showSerialPicker = false
-    @State private var lastSentBPMs: [Int] = [0, 0, 0]
-    @State private var bpmValues: [Int] = [0, 0, 0]
-
+    
     var body: some View {
         VStack(spacing: 40) {
             Text("Resonance")
@@ -19,30 +11,32 @@ struct StartScreen: View {
                 .bold()
 
             HStack(spacing: 30) {
-                PlayerCardView(viewModel: player1)
-                PlayerCardView(viewModel: player2)
-                PlayerCardView(viewModel: player3)
+                PlayerCardView(viewModel: gameStateManager.player1)
+                PlayerCardView(viewModel: gameStateManager.player2)
+                PlayerCardView(viewModel: gameStateManager.player3)
             }
 
-            if isReadyToStart {
-                Text("All monitors connected. Starting...")
-                    .font(.caption)
-                    .foregroundColor(.green)
-            }
-        }
-        .padding()
-
-        .onChange(of: [player1.isConnected, player2.isConnected, player3.isConnected]) { _, _ in
-            isReadyToStart = player1.isConnected && player2.isConnected && player3.isConnected
-            if isReadyToStart {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    // Transition to Game Screen goes here
+            if gameStateManager.currentState == .ready {
+                VStack {
+                    Text("All monitors connected! Ready to start.")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                    
+                    Button("Begin Experience") {
+                        gameStateManager.startGame()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding()
                 }
             }
         }
-
+        .padding()
+        .sheet(isPresented: $showSerialPicker) {
+            // Your serial picker view here
+        }
+        
         Button("Turn on the vibes") {
-            // Future: open serial picker or something cool
+            showSerialPicker = true
         }
         .buttonStyle(.plain)
         .padding()
@@ -51,26 +45,17 @@ struct StartScreen: View {
 
 #Preview {
     let espManager = ESPPeripheralManager()
-    let player1 = PlayerCardViewModel(
-        id: 1,
-        deviceUUID: UUID(),
-        espManager: espManager
-    )
-    let player2 = PlayerCardViewModel(
-        id: 2,
-        deviceUUID: UUID(),
-        espManager: espManager
-    )
-    let player3 = PlayerCardViewModel(
-        id: 3,
-        deviceUUID: UUID(),
-        espManager: espManager
-    )
-
+    
+    let player1 = PlayerCardViewModel(id: 1, deviceUUID: UUID(), espManager: espManager)
+    let player2 = PlayerCardViewModel(id: 2, deviceUUID: UUID(), espManager: espManager)
+    let player3 = PlayerCardViewModel(id: 3, deviceUUID: UUID(), espManager: espManager)
+    
     return StartScreen(
-        player1: player1,
-        player2: player2,
-        player3: player3,
-        espManager: espManager
+        gameStateManager: GameStateManager(
+            player1: player1,
+            player2: player2,
+            player3: player3,
+            espManager: espManager
+        )
     )
 }

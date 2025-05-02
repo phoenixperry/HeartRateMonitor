@@ -6,19 +6,20 @@ struct HeartRateMonitorApp: App {
 
     // Declare shared ESP manager
     let espManager = ESPPeripheralManager()
-
-    // Declare shared player VMs
-    let player1: PlayerCardViewModel
-    let player2: PlayerCardViewModel
-    let player3: PlayerCardViewModel
+    
+    // Create StateObject for game state manager
+    @StateObject private var gameStateManager: GameStateManager
+    
+    // Create player view models
+    private let player1: PlayerCardViewModel
+    private let player2: PlayerCardViewModel
+    private let player3: PlayerCardViewModel
 
     init() {
         // Initialize players with the shared ESP manager
         player1 = PlayerCardViewModel(
             id: 1,
-            deviceUUID: UUID(uuidString:
-            "5C597A63-FA35-7537-56F5-254229B48FF3")!,
-                                //"5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
+            deviceUUID: UUID(uuidString: "5C597A63-FA35-7537-56F5-254229B48FF3")!,
             espManager: espManager
         )
 
@@ -30,24 +31,28 @@ struct HeartRateMonitorApp: App {
 
         player3 = PlayerCardViewModel(
             id: 3,
-            deviceUUID: UUID(uuidString:
-                                "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
-            //087AC373-A006-D6B6-26D3-4DD97728DAFF")!,
+            deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
             espManager: espManager
         )
+        
+        // Initialize the game state manager
+        let gameState = GameStateManager(
+            player1: player1,
+            player2: player2,
+            player3: player3,
+            espManager: espManager
+        )
+        
+        // Use standard StateObject initialization
+        self._gameStateManager = StateObject(wrappedValue: gameState)
 
-        // Assign espManager to AppDelegate
+        // Assign espManager to AppDelegate for cleanup
         appDelegate.espManager = espManager
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(
-                player1: player1,
-                player2: player2,
-                player3: player3,
-                espManager: espManager
-            )
+            ContentView(gameStateManager: gameStateManager)
         }
     }
 }
