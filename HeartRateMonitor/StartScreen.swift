@@ -35,9 +35,9 @@ struct StartScreen: View {
             // Your serial picker view here
         }
         
-        Button("Turn on the vibes") {
-            showSerialPicker = true
-        }
+//        Button("Turn on the vibes") {
+//            showSerialPicker = true
+//        }
         .buttonStyle(.plain)
         .padding()
     }

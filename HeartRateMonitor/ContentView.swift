@@ -2,37 +2,59 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var gameStateManager: GameStateManager
+    @State private var showMetalTest = false
     
     var body: some View {
-        Group {
-            switch gameStateManager.currentState {
-            case .setup, .ready:
-                StartScreen(gameStateManager: gameStateManager)
-            case .playing:
-                GameScreen(gameStateManager: gameStateManager)
-            case .paused:
-                PausedScreen(gameStateManager: gameStateManager)
-            case .finished:
-                ResultsScreen(gameStateManager: gameStateManager)
+        ZStack {
+            // Regular game content
+            Group {
+                switch gameStateManager.currentState {
+                case .setup, .ready:
+                    StartScreen(gameStateManager: gameStateManager)
+                case .playing:
+                    GameScreen(gameStateManager: gameStateManager)
+                case .paused:
+                    PausedScreen(gameStateManager: gameStateManager)
+                case .finished:
+                    ResultsScreen(gameStateManager: gameStateManager)
+                }
+            }
+            
+            // Metal test view (shown when triggered)
+            if showMetalTest {
+                MetalTestView()
+                    .background(Color.white)
+                    .cornerRadius(20)
+                    .shadow(radius: 10)
+                    .padding(40)
+                    .overlay(
+                        Button("Close") {
+                            showMetalTest = false
+                        }
+                        .padding(),
+                        alignment: .topTrailing
+                    )
+                    .zIndex(1)
             }
         }
+        .onAppear {
+            // Listen for keystroke
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                if event.keyCode == 17 && event.modifierFlags.contains(.command) {
+                    // Cmd+T pressed
+                    showMetalTest.toggle()
+                    return nil
+                }
+                return event
+            }
+        }
+        // Add a small hint
+        .overlay(
+            Text("Press ⌘+T for Metal test")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(8),
+            alignment: .bottomTrailing
+        )
     }
-}
-
-// Preview provider
-#Preview {
-    let espManager = ESPPeripheralManager()
-    
-    let player1 = PlayerCardViewModel(id: 1, deviceUUID: UUID(), espManager: espManager)
-    let player2 = PlayerCardViewModel(id: 2, deviceUUID: UUID(), espManager: espManager)
-    let player3 = PlayerCardViewModel(id: 3, deviceUUID: UUID(), espManager: espManager)
-    
-    let gameStateManager = GameStateManager(
-        player1: player1,
-        player2: player2,
-        player3: player3,
-        espManager: espManager
-    )
-    
-    return ContentView(gameStateManager: gameStateManager)
 }
