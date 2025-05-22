@@ -54,5 +54,7 @@ vertex VertexOut vertexShader(uint vertexID [[vertex_id]]) {
 
 fragment float4 fragmentShader(VertexOut in [[stage_in]]) {
     // Simple purple color
+
+    float f=
     return float4(0.5, 0.3, 0.8, 1.0);
 }
