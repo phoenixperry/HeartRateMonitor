@@ -1,4 +1,3 @@
-// GameScreen.swift
 import SwiftUI
 
 struct GameScreen: View {
@@ -6,92 +5,170 @@ struct GameScreen: View {
     @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var timeRemaining: TimeInterval = 0
     
+    // Projection mapping controls - these should be persisted between sessions
+    @State private var visualScale: CGFloat = 1.0
+    @State private var offsetX: CGFloat = 0.0
+    @State private var offsetY: CGFloat = 0.0
+    @State private var showControls: Bool = false
+    
     var body: some View {
-        VStack(spacing: 40) {
-            // Header with sync score and time
-            HStack {
-                Text("Synchronization: \(Int(gameStateManager.calculateSynchronization()))%")
-                    .font(.headline)
-                
-                Spacer()
-                
-                Text(timeString(from: timeRemaining))
-                    .font(.headline)
-                    .foregroundColor(timeRemaining < 30 ? .red : .primary)
+        ZStack {
+            // Main projection area
+            GeometryReader { geometry in
+                ZStack {
+                    // Background - subtle gradient to help with alignment
+                    RadialGradient(
+                        colors: [Color.black.opacity(0.1), Color.clear],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: min(geometry.size.width, geometry.size.height) * 0.4
+                    )
+                    
+                    // Three player visualizations arranged in triangle
+                    HexagonVisualizationGroup(
+                        player1: gameStateManager.player1,
+                        player2: gameStateManager.player2,
+                        player3: gameStateManager.player3,
+                        syncLevel: gameStateManager.calculateSynchronization() / 100.0,
+                        canvasSize: geometry.size
+                    )
+                    .scaleEffect(visualScale)
+                    .offset(x: offsetX, y: offsetY)
+                }
             }
-            .padding()
+            .background(Color.black)
+            .clipped()
             
-            // Heart rate displays
-            HStack(spacing: 30) {
+            // Overlay UI (only visible when showControls is true)
+            if showControls {
                 VStack {
-                    WaveformBreathingCircle(
-                        bpm: .constant(gameStateManager.player1.heartRate),
-                        shouldAnimate: .constant(true)
-                    ) {
-                        // Cycle complete
+                    // Header with game info
+                    HStack {
+                        Text("Synchronization: \(Int(gameStateManager.calculateSynchronization()))%")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        Text(timeString(from: timeRemaining))
+                            .font(.headline)
+                            .foregroundColor(timeRemaining < 30 ? .red : .white)
                     }
-                    .frame(width: 140, height: 140)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
                     
-                    Text("Player 1: \(gameStateManager.player1.heartRate) BPM")
-                }
-                
-                VStack {
-                    WaveformBreathingCircle(
-                        bpm: .constant(gameStateManager.player2.heartRate),
-                        shouldAnimate: .constant(true)
-                    ) {
-                        // Cycle complete
+                    Spacer()
+                    
+                    // Projection mapping controls
+                    VStack(spacing: 15) {
+                        Text("Projection Mapping Controls")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        HStack {
+                            Text("Scale:")
+                                .foregroundColor(.white)
+                            Slider(value: $visualScale, in: 0.1...2.0)
+                            Text(String(format: "%.2f", visualScale))
+                                .foregroundColor(.white)
+                                .frame(width: 50)
+                        }
+                        
+                        HStack {
+                            Text("X Offset:")
+                                .foregroundColor(.white)
+                            Slider(value: $offsetX, in: -400...400)
+                            Text(String(format: "%.0f", offsetX))
+                                .foregroundColor(.white)
+                                .frame(width: 50)
+                        }
+                        
+                        HStack {
+                            Text("Y Offset:")
+                                .foregroundColor(.white)
+                            Slider(value: $offsetY, in: -400...400)
+                            Text(String(format: "%.0f", offsetY))
+                                .foregroundColor(.white)
+                                .frame(width: 50)
+                        }
+                        
+                        // Player stats for debugging
+                        HStack(spacing: 30) {
+                            PlayerDebugInfo(label: "P1", bpm: gameStateManager.player1.heartRate)
+                            PlayerDebugInfo(label: "P2", bpm: gameStateManager.player2.heartRate)
+                            PlayerDebugInfo(label: "P3", bpm: gameStateManager.player3.heartRate)
+                        }
                     }
-                    .frame(width: 140, height: 140)
+                    .padding()
+                    .background(Color.black.opacity(0.8))
+                    .cornerRadius(10)
+                    .padding()
                     
-                    Text("Player 2: \(gameStateManager.player2.heartRate) BPM")
-                }
-                
-                VStack {
-                    WaveformBreathingCircle(
-                        bpm: .constant(gameStateManager.player3.heartRate),
-                        shouldAnimate: .constant(true)
-                    ) {
-                        // Cycle complete
+                    // Game controls
+                    HStack {
+                        Button("Pause") {
+                            gameStateManager.pauseGame()
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("End Experience") {
+                            gameStateManager.endGame()
+                        }
+                        .buttonStyle(.bordered)
+                        .foregroundColor(.red)
+                        
+                        Button("Hide Controls") {
+                            showControls = false
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .frame(width: 140, height: 140)
-                    
-                    Text("Player 3: \(gameStateManager.player3.heartRate) BPM")
+                    .padding()
                 }
             }
-            
-            // Controls
-            HStack {
-                Button("Pause") {
-                    gameStateManager.pauseGame()
-                }
-                .buttonStyle(.bordered)
-                
-                Button("End Experience") {
-                    gameStateManager.endGame()
-                }
-                .buttonStyle(.bordered)
-                .foregroundColor(.red)
-            }
-            .padding()
         }
-        .padding()
         .onAppear {
-            if let startTime = gameStateManager.gameStartTime {
-                timeRemaining = gameStateManager.gameDuration - Date().timeIntervalSince(startTime)
-                if timeRemaining <= 0 {
-                    gameStateManager.endGame()
-                }
-            } else {
-                timeRemaining = gameStateManager.gameDuration
-            }
+            setupTimer()
         }
         .onReceive(timer) { _ in
-            if let startTime = gameStateManager.gameStartTime {
-                timeRemaining = gameStateManager.gameDuration - Date().timeIntervalSince(startTime)
-                if timeRemaining <= 0 {
-                    gameStateManager.endGame()
-                }
+            updateTimer()
+        }
+        // Key press handling for Mac
+        .focusable()
+        .onKeyPress { keyPress in
+            // Press 'C' to toggle controls
+            if keyPress.characters == "c" || keyPress.characters == "C" {
+                showControls.toggle()
+                return .handled
+            }
+            // Press ESC to hide controls
+            if keyPress.key == .escape {
+                showControls = false
+                return .handled
+            }
+            return .ignored
+        }
+        // Click handling (single click to toggle controls)
+        .onTapGesture {
+            showControls.toggle()
+        }
+    }
+    
+    private func setupTimer() {
+        if let startTime = gameStateManager.gameStartTime {
+            timeRemaining = gameStateManager.gameDuration - Date().timeIntervalSince(startTime)
+            if timeRemaining <= 0 {
+                gameStateManager.endGame()
+            }
+        } else {
+            timeRemaining = gameStateManager.gameDuration
+        }
+    }
+    
+    private func updateTimer() {
+        if let startTime = gameStateManager.gameStartTime {
+            timeRemaining = gameStateManager.gameDuration - Date().timeIntervalSince(startTime)
+            if timeRemaining <= 0 {
+                gameStateManager.endGame()
             }
         }
     }
@@ -103,83 +180,19 @@ struct GameScreen: View {
     }
 }
 
-// PausedScreen.swift
-import SwiftUI
-
-struct PausedScreen: View {
-    @ObservedObject var gameStateManager: GameStateManager
+#Preview {
+    let espManager = ESPPeripheralManager()
     
-    var body: some View {
-        VStack(spacing: 30) {
-            Text("Experience Paused")
-                .font(.largeTitle)
-            
-            Text("Take a moment to breathe...")
-                .font(.title2)
-            
-            HStack(spacing: 20) {
-                Button("Resume") {
-                    gameStateManager.resumeGame()
-                }
-                .buttonStyle(.borderedProminent)
-                
-                Button("End Experience") {
-                    gameStateManager.endGame()
-                }
-                .buttonStyle(.bordered)
-                .foregroundColor(.red)
-            }
-            .padding(.top, 40)
-        }
-        .padding()
-    }
-}
-
-// ResultsScreen.swift
-import SwiftUI
-
-struct ResultsScreen: View {
-    @ObservedObject var gameStateManager: GameStateManager
+    let player1 = PlayerCardViewModel(id: 1, deviceUUID: UUID(), espManager: espManager)
+    let player2 = PlayerCardViewModel(id: 2, deviceUUID: UUID(), espManager: espManager)
+    let player3 = PlayerCardViewModel(id: 3, deviceUUID: UUID(), espManager: espManager)
     
-    var body: some View {
-        VStack(spacing: 40) {
-            Text("Experience Complete")
-                .font(.largeTitle)
-                .padding(.bottom)
-            
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Synchronization Score: \(Int(gameStateManager.calculateSynchronization()))%")
-                    .font(.title3)
-                
-                if let startTime = gameStateManager.gameStartTime {
-                    Text("Duration: \(formattedDuration(from: startTime))")
-                        .font(.title3)
-                }
-                
-                // More stats could go here
-            }
-            .padding()
-            .frame(maxWidth: 500)
-            .background(Color.black.opacity(0.05))
-            .cornerRadius(12)
-            
-            Text("Thank you for participating in Resonance")
-                .font(.title2)
-                .padding(.top)
-            
-            Button("Start New Experience") {
-                gameStateManager.resetGame()
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 20)
-        }
-        .padding()
-    }
+    let gameStateManager = GameStateManager(
+        player1: player1,
+        player2: player2,
+        player3: player3,
+        espManager: espManager
+    )
     
-    private func formattedDuration(from startTime: Date) -> String {
-        let duration = Date().timeIntervalSince(startTime)
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        return String(format: "%d min %d sec", minutes, seconds)
-    }
+    return GameScreen(gameStateManager: gameStateManager)
 }
