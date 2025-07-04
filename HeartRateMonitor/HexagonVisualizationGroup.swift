@@ -26,10 +26,10 @@ struct HexagonVisualizationGroup: View {
             PulsingSyncShape(
                 heartRate: player1.heartRate,
                 morphLevel: syncLevel,
-                color: .red
+                playerColor: .player1
             ) {
-                // Optional: trigger events on player 1's heartbeat cycle completion
-                print("Player 1 beat cycle completed")
+                // Use existing method - it already handles threading and "only send on change"
+                player1.cycleDidComplete()
             }
             .position(positions[0])
             
@@ -37,10 +37,10 @@ struct HexagonVisualizationGroup: View {
             PulsingSyncShape(
                 heartRate: player2.heartRate,
                 morphLevel: syncLevel,
-                color: .blue
+                playerColor: .player2
             ) {
-                // Optional: trigger events on player 2's heartbeat cycle completion
-                print("Player 2 beat cycle completed")
+                // Use existing method - it already handles threading and "only send on change"
+                player2.cycleDidComplete()
             }
             .position(positions[1])
             
@@ -48,10 +48,10 @@ struct HexagonVisualizationGroup: View {
             PulsingSyncShape(
                 heartRate: player3.heartRate,
                 morphLevel: syncLevel,
-                color: .yellow
+                playerColor: .player3
             ) {
-                // Optional: trigger events on player 3's heartbeat cycle completion
-                print("Player 3 beat cycle completed")
+                // Use existing method - it already handles threading and "only send on change"
+                player3.cycleDidComplete()
             }
             .position(positions[2])
             

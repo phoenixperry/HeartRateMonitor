@@ -16,13 +16,8 @@ struct GameScreen: View {
             // Main projection area
             GeometryReader { geometry in
                 ZStack {
-                    // Background - subtle gradient to help with alignment
-                    RadialGradient(
-                        colors: [Color.black.opacity(0.1), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: min(geometry.size.width, geometry.size.height) * 0.4
-                    )
+                    // Beautiful atmospheric background
+                    GameBackground()
                     
                     // Three player visualizations arranged in triangle
                     HexagonVisualizationGroup(
