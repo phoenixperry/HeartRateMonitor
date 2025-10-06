@@ -3,7 +3,7 @@
 //  HeartRateMonitor
 //
 //  Created by Phoenix Perry on 04/05/2025.
-//
+// you can ignore this - it's just for me to learn shader coding for a possible future version
 
 import SwiftUI
 

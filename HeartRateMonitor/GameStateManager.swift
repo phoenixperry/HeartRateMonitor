@@ -52,6 +52,7 @@ class GameStateManager: ObservableObject {
             return p1Connected && p2Connected && p3Connected
         }
         //sink says, "Hey, I want to know about any changes that happen in this data stream, and here's what I want to do when changes occur."
+        //there is a completion handler that is called when the data stream is complete that I could use if people disconnect during gameplay
         .sink { [weak self] allConnected in
             if allConnected && self?.currentState == .setup {
                 self?.currentState = .ready

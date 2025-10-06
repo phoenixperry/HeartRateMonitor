@@ -31,7 +31,7 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         let bpmString = "\(bpm)"
         if let data = bpmString.data(using: .utf8) {
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
-//            print("📡 Sent BPM: \(bpmString)")
+            print("📡 Sent BPM: \(bpmString)")
         }
     }
 
