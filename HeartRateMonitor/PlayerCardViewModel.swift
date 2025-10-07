@@ -28,9 +28,9 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
     // MARK: - Data Sending
 
-    func sendBPMToESP(_ bpm: Int) {
+    func sendBPMToESP(_ playerID: Int, bpm: Int) {
         bluetoothQueue.async { [weak self] in
-            self?.espManager.send(bpm: bpm)
+            self?.espManager.send(playerID:playerID, bpm:bpm)
         }
     }
 
@@ -46,7 +46,8 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         lastSentBPM = bpmToSend
         // Log on main thread to avoid console corruption
          print("🔄 Player \(id) cycle complete - BPM: \(bpmToSend)")
-
+        
+        //send osc on background thread
         oscQueue.async { [weak self] in
             guard let self = self else { return }
          //   guard bpmToSend > 0 && bpmToSend < 240 else { return }
@@ -60,10 +61,11 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
             self.oscManager.sendBPM(forPlayer: self.id, bpm: UInt16(bpmToSend))
             }
         // Send to ESP on separate queue to prevent blocking
-        self.bluetoothQueue.async {
-            self.espManager.send(bpm: bpmToSend)
+        bluetoothQueue.async {[weak self] in
+            guard let self = self else { return }
+            self.espManager.send(playerID: self.id, bpm: bpmToSend)
                   
-            print("📡 Thread-safe: Sent BPM \(bpmToSend) to OSC and ESP")
+            print("📡 Player(\(self.id)): Sent BPM \(bpmToSend) to OSC and ESP")
         }
     }
 
@@ -107,6 +109,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
             self.isConnected = false
             self.hasStartedPlay = false
             self.heartRate = 0
+            self.lastSentBPM = 0
             print("🔌 Player \(self.id) disconnected")
         }
     }

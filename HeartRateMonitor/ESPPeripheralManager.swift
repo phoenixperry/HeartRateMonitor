@@ -19,8 +19,9 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
     }
 
     // MARK: - Public API
-
-    func send(bpm: Int) {
+    // Send individual player BPM update (most efficient - only send what changed)
+        /// Format: "playerID:bpm" (e.g., "1:75")
+    func send(playerID:Int, bpm: Int) {
         guard let peripheral = espPeripheral,
               let characteristic = bpmCharacteristic,
               peripheral.state == .connected else {
@@ -28,13 +29,27 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
             return
         }
 
-        let bpmString = "\(bpm)"
+        let bpmString = "\(playerID):\(bpm)"
         if let data = bpmString.data(using: .utf8) {
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
-            print("📡 Sent BPM: \(bpmString)")
+            print("📡 Sent player\(playerID) BPM \(bpmString)")
         }
     }
+    func sendGroupBPMs(_ playerBPMs:[(playerID:Int, bpm:Int)]){
+        guard let peripheral = espPeripheral,
+              let characteristic = bpmCharacteristic,
+              peripheral.state == .connected else {
+            print("⚠️ ESP32 not connected")
+            return
+        }
 
+        let message = playerBPMs.map {"\($0.playerID):($0.bpm)" }.joined(separator: ",")
+        if let data = message.data(using: .utf8) {
+            peripheral.writeValue(data, for: characteristic, type: .withResponse)
+            print("📡 Sent group BPMs: \(message)")
+        }
+    }
+    
     // MARK: - CBCentralManagerDelegate
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -92,20 +107,9 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
             }
         }
     }
-    func sendGroupBPMs(_ bpmValues: [Int]) {
-        guard let peripheral = espPeripheral,
-              let characteristic = bpmCharacteristic,
-              peripheral.state == .connected else {
-            print("⚠️ ESP32 not connected")
-            return
-        }
+    
 
-        let bpmString = bpmValues.map { String($0) }.joined(separator: ",")
-        if let data = bpmString.data(using: .utf8) {
-            peripheral.writeValue(data, for: characteristic, type: .withResponse)
-//            print("📡 Sent group BPMs: \(bpmString)")
-        }
-    }
+    
     func disconnectCurrentPeripheral() {
         if let peripheral = espPeripheral, peripheral.state == .connected {
             centralManager.cancelPeripheralConnection(peripheral)
