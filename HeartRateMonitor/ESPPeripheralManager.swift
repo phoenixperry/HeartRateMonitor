@@ -10,7 +10,6 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
     // UUIDs must match your ESP32 sketch
     private let serviceUUID = CBUUID(string: "180D")
     private let characteristicUUID = CBUUID(string: "2A39")
-
     @Published var isConnected: Bool = false
 
     override init() {

@@ -47,7 +47,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         // Log on main thread to avoid console corruption
          print("🔄 Player \(id) cycle complete - BPM: \(bpmToSend)")
         
-        //send osc on background thread
+        //send osc on background tnot hread
         oscQueue.async { [weak self] in
             guard let self = self else { return }
          //   guard bpmToSend > 0 && bpmToSend < 240 else { return }
