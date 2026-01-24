@@ -20,20 +20,46 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
     // MARK: - Public API
     // Send individual player BPM update (most efficient - only send what changed)
         /// Format: "playerID:bpm" (e.g., "1:75")
-    func send(playerID:Int, bpm: Int) {
+//    func send(playerID:Int, bpm: Int) {
+//        guard let peripheral = espPeripheral,
+//              let characteristic = bpmCharacteristic,
+//              peripheral.state == .connected else {
+//            print("⚠️ Not connected to ESP32")
+//            return
+//        }
+//
+//        let bpmString = "\(playerID):\(bpm)"
+//        if let data = bpmString.data(using: .utf8) {
+//            peripheral.writeValue(data, for: characteristic, type: .withoutResponse) //with and without responses are options here -
+//            print("📡 Sent player\(playerID) BPM \(bpmString)")
+//        }
+//    }
+//    
+    func writeCommand(_ string: String, withResponse: Bool = false) {
+        guard let data = string.data(using: .utf8) else { return }
         guard let peripheral = espPeripheral,
               let characteristic = bpmCharacteristic,
               peripheral.state == .connected else {
             print("⚠️ Not connected to ESP32")
             return
         }
-
-        let bpmString = "\(playerID):\(bpm)"
-        if let data = bpmString.data(using: .utf8) {
-            peripheral.writeValue(data, for: characteristic, type: .withResponse)
-            print("📡 Sent player\(playerID) BPM \(bpmString)")
-        }
+        let type: CBCharacteristicWriteType = withResponse ? .withResponse : .withoutResponse
+        peripheral.writeValue(data, for: characteristic, type: type)
+        print("📡 data: \(string)")
+        
     }
+    
+    func sendTempo(id: Int, bpm: Int) {
+        writeCommand("S:\(id):\(bpm)", withResponse: false)
+        print("📡 `Sent player\(id) BPM \(bpm)")
+    }
+    
+    func sendHaptics(id:Int){
+        writeCommand("K:\(id)", withResponse: false)
+        print("🥁 Fire haptics for player \(id)")
+    }
+    
+    //not using this right now
     func sendGroupBPMs(_ playerBPMs:[(playerID:Int, bpm:Int)]){
         guard let peripheral = espPeripheral,
               let characteristic = bpmCharacteristic,
@@ -42,7 +68,7 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
             return
         }
 
-        let message = playerBPMs.map {"\($0.playerID):($0.bpm)" }.joined(separator: ",")
+        let message = playerBPMs.map { "\($0.playerID):\($0.bpm)" }.joined(separator: ",")
         if let data = message.data(using: .utf8) {
             peripheral.writeValue(data, for: characteristic, type: .withResponse)
             print("📡 Sent group BPMs: \(message)")
@@ -116,3 +142,4 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         }
     }
 }
+

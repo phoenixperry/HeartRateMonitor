@@ -3,6 +3,7 @@ import SwiftUI
 /// A breathing circle view that animates at the speed of a given BPM (beats per minute).
 /// Each BPM cycle follows a sine waveform from 0 to 2π.
 /// Triggers `onCycleComplete` at the end of each beat cycle.
+/// The view can now report the scale value each frame via `onScaleUpdate`.
 struct WaveformBreathingCircle: View {
     
     /// The current BPM, passed in from outside the view
@@ -13,6 +14,9 @@ struct WaveformBreathingCircle: View {
     
     /// An optional callback that's called at the completion of each waveform cycle
     var onCycleComplete: (() -> Void)? = nil
+    
+    /// An optional callback that receives the current scale value each frame
+    var onScaleUpdate: ((CGFloat) -> Void)? = nil
     
     // MARK: - Internal animation state
     
@@ -73,6 +77,9 @@ struct WaveformBreathingCircle: View {
                     pendingBPM = newBPM
                 }
             }
+            .onChange(of: progress) {
+                onScaleUpdate?(scale(for: progress))
+            }
         } else {
             // Static circle when not animating
             Circle()
@@ -130,3 +137,4 @@ struct WaveformBreathingCircle: View {
         }
     }
 }
+
