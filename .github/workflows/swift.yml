@@ -5,9 +5,9 @@ name: Swift
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "Headless_Game" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "Headless_Game" ]
 
 jobs:
   build:
