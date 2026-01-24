@@ -23,41 +23,9 @@ struct GameScreen: View {
             
             // Heart rate displays
             HStack(spacing: 30) {
-                VStack {
-                    WaveformBreathingCircle(
-                        bpm: .constant(gameStateManager.player1.heartRate),
-                        shouldAnimate: .constant(true)
-                    ) {
-                        // Cycle complete
-                    }
-                    .frame(width: 140, height: 140)
-                    
-                    Text("Player 1: \(gameStateManager.player1.heartRate) BPM")
-                }
-                
-                VStack {
-                    WaveformBreathingCircle(
-                        bpm: .constant(gameStateManager.player2.heartRate),
-                        shouldAnimate: .constant(true)
-                    ) {
-                        // Cycle complete
-                    }
-                    .frame(width: 140, height: 140)
-                    
-                    Text("Player 2: \(gameStateManager.player2.heartRate) BPM")
-                }
-                
-                VStack {
-                    WaveformBreathingCircle(
-                        bpm: .constant(gameStateManager.player3.heartRate),
-                        shouldAnimate: .constant(true)
-                    ) {
-                        // Cycle complete
-                    }
-                    .frame(width: 140, height: 140)
-                    
-                    Text("Player 3: \(gameStateManager.player3.heartRate) BPM")
-                }
+                PlayerCardView(viewModel: gameStateManager.player1)
+                PlayerCardView(viewModel: gameStateManager.player2)
+                PlayerCardView(viewModel: gameStateManager.player3)
             }
             
             // Controls
