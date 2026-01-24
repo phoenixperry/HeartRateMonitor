@@ -60,10 +60,11 @@ class GameStateManager: ObservableObject {
         .sink { [weak self] allConnected in
             if allConnected && self?.currentState == .setup {
                 self?.currentState = .ready
-            } else if !allConnected && (self?.currentState == .ready || self?.currentState == .playing) {
-                // If someone disconnects during gameplay, pause
+            } else if !allConnected && self?.currentState == .ready {
+                // If someone disconnects before game starts, go back to setup
                 self?.currentState = .setup
             }
+            // During gameplay (.playing or .paused), allow players to leave without ending the round
         }
         .store(in: &cancellables)
     }
