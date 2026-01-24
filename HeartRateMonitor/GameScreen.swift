@@ -46,7 +46,8 @@ struct GameScreen: View {
         .padding()
         .onAppear {
             if let startTime = gameStateManager.gameStartTime {
-                timeRemaining = gameStateManager.gameDuration - Date().timeIntervalSince(startTime)
+                let elapsed = Date().timeIntervalSince(startTime) - gameStateManager.totalPausedTime
+                timeRemaining = gameStateManager.gameDuration - elapsed
                 if timeRemaining <= 0 {
                     gameStateManager.endGame()
                 }
@@ -56,7 +57,8 @@ struct GameScreen: View {
         }
         .onReceive(timer) { _ in
             if let startTime = gameStateManager.gameStartTime {
-                timeRemaining = gameStateManager.gameDuration - Date().timeIntervalSince(startTime)
+                let elapsed = Date().timeIntervalSince(startTime) - gameStateManager.totalPausedTime
+                timeRemaining = gameStateManager.gameDuration - elapsed
                 if timeRemaining <= 0 {
                     gameStateManager.endGame()
                 }

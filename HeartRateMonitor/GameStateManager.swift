@@ -27,6 +27,10 @@ class GameStateManager: ObservableObject {
     @Published var gameStartTime: Date? = nil
     @Published var gameDuration: TimeInterval = 180 // 3 minutes default
     @Published var synchronizationScore: Double = 0
+
+    // Pause tracking
+    private var pauseStartTime: Date? = nil
+    @Published var totalPausedTime: TimeInterval = 0
     
     // For tracking state changes
     private var cancellables = Set<AnyCancellable>()
@@ -80,12 +84,17 @@ class GameStateManager: ObservableObject {
     // Pause the game
     func pauseGame() {
         guard currentState == .playing else { return }
+        pauseStartTime = Date()
         currentState = .paused
     }
-    
+
     // Resume the game
     func resumeGame() {
         guard currentState == .paused else { return }
+        if let pauseStart = pauseStartTime {
+            totalPausedTime += Date().timeIntervalSince(pauseStart)
+            pauseStartTime = nil
+        }
         currentState = .playing
     }
     
@@ -99,9 +108,11 @@ class GameStateManager: ObservableObject {
         player1.disconnect()
         player2.disconnect()
         player3.disconnect()
-        
+
         gameStartTime = nil
         synchronizationScore = 0
+        pauseStartTime = nil
+        totalPausedTime = 0
         currentState = .setup
     }
     
