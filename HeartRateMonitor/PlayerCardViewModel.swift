@@ -9,6 +9,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     @Published var isConnected: Bool = false
     @Published var hasStartedPlay: Bool = false
     @Published var heartRate: Int = 0
+    @Published var currentScale:CGFloat = 1.0
     
     private var lastSentBPM: Int = 0
     private let oscQueue = DispatchQueue(label: "oscQueue", qos: .userInitiated)
@@ -30,7 +31,13 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
     func sendBPMToESP(_ playerID: Int, bpm: Int) {
         bluetoothQueue.async { [weak self] in
-            self?.espManager.send(playerID:playerID, bpm:bpm)
+            self?.espManager.sendTempo(id:playerID,bpm:bpm)
+        }
+    }
+    
+    func sendHapticsToESP(_ playerID: Int) {
+        bluetoothQueue.async { [weak self] in
+            self?.espManager.sendHaptics(id:playerID)
         }
     }
 
@@ -39,33 +46,37 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         guard hasStartedPlay, isConnected else { return }
         // Capture value once to ensure consistency
         let bpmToSend = heartRate
-
+        sendHapticsToESP(id)
+        
         // Skip if no meaningful data to send or no change
         guard bpmToSend > 0 && bpmToSend != lastSentBPM else { return }
-
+        //make sure that the bpm actually needs updating
+    
         lastSentBPM = bpmToSend
         // Log on main thread to avoid console corruption
          print("🔄 Player \(id) cycle complete - BPM: \(bpmToSend)")
-        
+    
         //send osc on background tnot hread
         oscQueue.async { [weak self] in
             guard let self = self else { return }
          //   guard bpmToSend > 0 && bpmToSend < 240 else { return }
             
-            // Double-check value range on background thread
+            // Double-check value range on background thread - there might be some cause for filtering for wild values from the sensors.
 //              guard bpmToSend > 0 && bpmToSend < 240 else {
 //                  print("⚠️ BPM out of range: \(bpmToSend)")
 //                  return
 //              }
             //send OSC
             self.oscManager.sendBPM(forPlayer: self.id, bpm: UInt16(bpmToSend))
+        
             }
+    
         // Send to ESP on separate queue to prevent blocking
         bluetoothQueue.async {[weak self] in
             guard let self = self else { return }
-            self.espManager.send(playerID: self.id, bpm: bpmToSend)
-                  
-            print("📡 Player(\(self.id)): Sent BPM \(bpmToSend) to OSC and ESP")
+     
+            self.espManager.sendTempo(id: self.id, bpm: bpmToSend)
+            //print("📡 Player(\(self.id)): Sent BPM \(bpmToSend) to OSC and ESP")
         }
     }
 
@@ -87,12 +98,17 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
         heartRateManager.onHeartRateUpdate = { [weak self] bpm in
             guard let self = self else { return }
-            
+
             DispatchQueue.main.async {
                 // Only update if value changed to avoid unnecessary view updates
                 if self.heartRate != Int(bpm) {
                     self.heartRate = Int(bpm)
-                    print("❤️ Player \(self.id) HR: \(self.heartRate)")
+
+                    // Disconnect if heart rate drops to 0 during gameplay
+                    if bpm == 0 && self.hasStartedPlay {
+                        print("💔 Player \(self.id) heart rate dropped to 0 - disconnecting")
+                        self.disconnect()
+                    }
                 }
             }
         }
@@ -118,6 +134,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         DispatchQueue.main.async {
             self.hasStartedPlay = true
             print("▶️ Player \(self.id) started play")
+            
         }
     }
 }
