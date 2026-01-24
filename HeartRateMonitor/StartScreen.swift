@@ -17,7 +17,7 @@ struct StartScreen: View {
             }
 
             VStack {
-                Text("All monitors connected! Ready to start.")
+                Text("\(gameStateManager.connectedPlayerCount) player\(gameStateManager.connectedPlayerCount == 1 ? "" : "s") connected. Ready to start.")
                     .font(.caption)
                     .foregroundColor(.green)
 

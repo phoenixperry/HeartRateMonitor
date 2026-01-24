@@ -45,6 +45,11 @@ class GameStateManager: ObservableObject {
         setupStateTransitions()
     }
     
+    // Count of currently connected players
+    var connectedPlayerCount: Int {
+        [player1.isConnected, player2.isConnected, player3.isConnected].filter { $0 }.count
+    }
+
     private func setupStateTransitions() {
         // Combine the connection state of all players to determine readiness
         Publishers.CombineLatest3(
@@ -53,15 +58,14 @@ class GameStateManager: ObservableObject {
             player3.$isConnected
         )
         .map { p1Connected, p2Connected, p3Connected in
-            return p1Connected && p2Connected && p3Connected
+            // Ready when at least one player is connected
+            return p1Connected || p2Connected || p3Connected
         }
-        //sink says, "Hey, I want to know about any changes that happen in this data stream, and here's what I want to do when changes occur."
-        //there is a completion handler that is called when the data stream is complete that I could use if people disconnect during gameplay
-        .sink { [weak self] allConnected in
-            if allConnected && self?.currentState == .setup {
+        .sink { [weak self] anyConnected in
+            if anyConnected && self?.currentState == .setup {
                 self?.currentState = .ready
-            } else if !allConnected && self?.currentState == .ready {
-                // If someone disconnects before game starts, go back to setup
+            } else if !anyConnected && self?.currentState == .ready {
+                // If all players disconnect before game starts, go back to setup
                 self?.currentState = .setup
             }
             // During gameplay (.playing or .paused), allow players to leave without ending the round
@@ -72,12 +76,12 @@ class GameStateManager: ObservableObject {
     // Start the game experience
     func startGame() {
         guard currentState == .ready else { return }
-        
-        // Set all players to playing state
-        player1.startPlay()
-        player2.startPlay()
-        player3.startPlay()
-        
+
+        // Only start play for connected players
+        if player1.isConnected { player1.startPlay() }
+        if player2.isConnected { player2.startPlay() }
+        if player3.isConnected { player3.startPlay() }
+
         gameStartTime = Date()
         currentState = .playing
     }
