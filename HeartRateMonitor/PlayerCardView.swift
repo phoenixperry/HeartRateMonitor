@@ -18,9 +18,11 @@ struct PlayerCardView: View {
                     WaveformBreathingCircle(
                         bpm: $viewModel.heartRate,
                         shouldAnimate: $shouldAnimate
+    
                     ) {
                         viewModel.cycleDidComplete()
                     }
+                    
                     .frame(width: 140, height: 140)
                     .overlay(
                         Text("\(viewModel.heartRate) bpm")
@@ -36,6 +38,7 @@ struct PlayerCardView: View {
                                 .font(.caption)
                                 .foregroundColor(.gray)
                         )
+                
                 }
             }
             
@@ -80,11 +83,20 @@ struct PlayerCardView: View {
         .cornerRadius(12)
         .shadow(radius: 5)
         .buttonStyle(.plain)
+        // Initialize animation state when view appears (critical for screen transitions)
+        .onAppear {
+            // When PlayerCardView is created in GameScreen, hasStartedPlay may already be true
+            // but shouldAnimate defaults to false. Sync them on appear.
+            shouldAnimate = viewModel.hasStartedPlay && viewModel.isConnected
+        }
         // Add reactive updates for connection state changes
         .onChange(of: viewModel.isConnected) { _, isConnected in
             if !isConnected {
                 // If disconnected, ensure animation stops
                 shouldAnimate = false
+            } else {
+                // If reconnected while in play mode, restart animation
+                shouldAnimate = viewModel.hasStartedPlay
             }
         }
         // Add reactive updates for play state changes
