@@ -16,24 +16,24 @@ struct StartScreen: View {
                 PlayerCardView(viewModel: gameStateManager.player3)
             }
 
-            if gameStateManager.currentState == .ready {
-                VStack {
-                    Text("All monitors connected! Ready to start.")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                    
-                    Button("Begin Experience") {
-                        gameStateManager.startGame()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .padding()
+            VStack {
+                Text("All monitors connected! Ready to start.")
+                    .font(.caption)
+                    .foregroundColor(.green)
+
+                Button("Begin Experience") {
+                    gameStateManager.startGame()
                 }
+                .buttonStyle(.borderedProminent)
+                .padding()
             }
+            .opacity(gameStateManager.currentState == .ready ? 1 : 0)
+            .allowsHitTesting(gameStateManager.currentState == .ready)
         }
         .padding()
-        .sheet(isPresented: $showSerialPicker) {
-            // Your serial picker view here
-        }
+//        .sheet(isPresented: $showSerialPicker) {
+//            // Your serial picker view here
+//        }
         
 //        Button("Turn on the vibes") {
 //            showSerialPicker = true
