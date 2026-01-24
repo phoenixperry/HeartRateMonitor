@@ -2,18 +2,31 @@ import SwiftUI
 
 struct StartScreen: View {
     @ObservedObject var gameStateManager: GameStateManager
-    @State private var showSerialPicker = false
-    
+
     var body: some View {
         VStack(spacing: 40) {
             Text("Resonance")
                 .font(.largeTitle)
                 .bold()
 
-            HStack(spacing: 30) {
-                PlayerCardView(viewModel: gameStateManager.player1)
-                PlayerCardView(viewModel: gameStateManager.player2)
-                PlayerCardView(viewModel: gameStateManager.player3)
+            // Dynamic player grid layout
+            LazyVGrid(columns: gridColumns, spacing: 30) {
+                ForEach(gameStateManager.players) { player in
+                    PlayerCardView(viewModel: player)
+                }
+            }
+
+            // Show message if no players configured
+            if gameStateManager.players.isEmpty {
+                VStack {
+                    Text("No players configured")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("Open settings to add devices")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
             }
 
             VStack {
@@ -31,31 +44,29 @@ struct StartScreen: View {
             .allowsHitTesting(gameStateManager.currentState == .ready)
         }
         .padding()
-//        .sheet(isPresented: $showSerialPicker) {
-//            // Your serial picker view here
-//        }
-        
-//        Button("Turn on the vibes") {
-//            showSerialPicker = true
-//        }
-        .buttonStyle(.plain)
-        .padding()
+    }
+
+    // Determine grid columns based on player count
+    private var gridColumns: [GridItem] {
+        let count = gameStateManager.players.count
+        if count <= 3 {
+            return Array(repeating: GridItem(.flexible()), count: max(count, 1))
+        } else {
+            // For 4-6 players, use 2 or 3 columns
+            let columnCount = count <= 4 ? 2 : 3
+            return Array(repeating: GridItem(.flexible()), count: columnCount)
+        }
     }
 }
 
 #Preview {
+    let configManager = ConfigurationManager()
     let espManager = ESPPeripheralManager()
-    
-    let player1 = PlayerCardViewModel(id: 1, deviceUUID: UUID(), espManager: espManager)
-    let player2 = PlayerCardViewModel(id: 2, deviceUUID: UUID(), espManager: espManager)
-    let player3 = PlayerCardViewModel(id: 3, deviceUUID: UUID(), espManager: espManager)
-    
+
     return StartScreen(
         gameStateManager: GameStateManager(
-            player1: player1,
-            player2: player2,
-            player3: player3,
-            espManager: espManager
+            espManager: espManager,
+            configManager: configManager
         )
     )
 }

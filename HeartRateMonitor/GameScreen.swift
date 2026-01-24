@@ -21,11 +21,11 @@ struct GameScreen: View {
             }
             .padding()
             
-            // Heart rate displays
-            HStack(spacing: 30) {
-                PlayerCardView(viewModel: gameStateManager.player1)
-                PlayerCardView(viewModel: gameStateManager.player2)
-                PlayerCardView(viewModel: gameStateManager.player3)
+            // Heart rate displays - dynamic player grid
+            LazyVGrid(columns: gridColumns, spacing: 30) {
+                ForEach(gameStateManager.players) { player in
+                    PlayerCardView(viewModel: player)
+                }
             }
             
             // Controls
@@ -70,6 +70,18 @@ struct GameScreen: View {
         let minutes = Int(timeInterval) / 60
         let seconds = Int(timeInterval) % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    // Determine grid columns based on player count
+    private var gridColumns: [GridItem] {
+        let count = gameStateManager.players.count
+        if count <= 3 {
+            return Array(repeating: GridItem(.flexible()), count: max(count, 1))
+        } else {
+            // For 4-6 players, use 2 or 3 columns
+            let columnCount = count <= 4 ? 2 : 3
+            return Array(repeating: GridItem(.flexible()), count: columnCount)
+        }
     }
 }
 

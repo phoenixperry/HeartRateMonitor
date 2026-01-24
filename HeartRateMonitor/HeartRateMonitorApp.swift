@@ -4,55 +4,39 @@ import SwiftUI
 struct HeartRateMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-    // Declare shared ESP manager
+    // Shared ESP manager for haptic feedback
     let espManager = ESPPeripheralManager()
-    
-    // Create StateObject for game state manager
+
+    // Configuration manager handles device discovery and persistence
+    @StateObject private var configManager = ConfigurationManager()
+
+    // Game state manager coordinates gameplay
     @StateObject private var gameStateManager: GameStateManager
-    
-    // Create player view models
-    private let player1: PlayerCardViewModel
-    private let player2: PlayerCardViewModel
-    private let player3: PlayerCardViewModel
 
     init() {
-        // Initialize players with the shared ESP manager
-        player1 = PlayerCardViewModel(
-            id: 1,
-            deviceUUID: UUID(uuidString: "5C597A63-FA35-7537-56F5-254229B48FF3")!,
-            espManager: espManager
-        )
+        let espMgr = ESPPeripheralManager()
+        let configMgr = ConfigurationManager()
 
-        player2 = PlayerCardViewModel(
-            id: 2,
-            deviceUUID: UUID(uuidString: "939617A2-BF34-DA9C-A319-13A252EB4684")!,
-            espManager: espManager
-        )
-
-        player3 = PlayerCardViewModel(
-            id: 3,
-            deviceUUID: UUID(uuidString: "5807F0AB-EC6C-5388-2F63-C1BA528E3950")!,
-            espManager: espManager
-        )
-        
-        // Initialize the game state manager
+        // Initialize game state manager with dynamic player support
         let gameState = GameStateManager(
-            player1: player1,
-            player2: player2,
-            player3: player3,
-            espManager: espManager
+            espManager: espMgr,
+            configManager: configMgr
         )
-        
-        // Use standard StateObject initialization
+
+        // Store as StateObjects
+        self._configManager = StateObject(wrappedValue: configMgr)
         self._gameStateManager = StateObject(wrappedValue: gameState)
 
-        // Assign espManager to AppDelegate for cleanup
-        appDelegate.espManager = espManager
+        // Note: espManager property is separate instance for backward compat
+        // The one passed to GameStateManager is the one that matters
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(gameStateManager: gameStateManager)
+            ContentView(
+                gameStateManager: gameStateManager,
+                configManager: configManager
+            )
         }
     }
 }
