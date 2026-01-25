@@ -25,6 +25,9 @@ class GameStateManager: ObservableObject {
     // Configuration manager reference
     private let configManager: ConfigurationManager
 
+    // Research logger reference
+    private let researchLogger = ResearchLogger.shared
+
     // Game metrics
     @Published var gameStartTime: Date? = nil
     @Published var gameDuration: TimeInterval = 180 // 3 minutes default
@@ -122,6 +125,17 @@ class GameStateManager: ObservableObject {
 
         gameStartTime = Date()
         currentState = .playing
+
+        // Start research logging with data provider
+        researchLogger.startSession(playerCount: playerCount) { [weak self] in
+            guard let self = self else {
+                return LogDataPoint(playerBPMs: [], syncScore: 0, activePlayerCount: 0)
+            }
+            let bpms = self.players.map { $0.heartRate }
+            let syncScore = self.calculateSynchronization()
+            let activeCount = self.connectedPlayerCount
+            return LogDataPoint(playerBPMs: bpms, syncScore: syncScore, activePlayerCount: activeCount)
+        }
     }
 
     // Pause the game
@@ -129,6 +143,7 @@ class GameStateManager: ObservableObject {
         guard currentState == .playing else { return }
         pauseStartTime = Date()
         currentState = .paused
+        researchLogger.pauseSession()
     }
 
     // Resume the game
@@ -139,15 +154,18 @@ class GameStateManager: ObservableObject {
             pauseStartTime = nil
         }
         currentState = .playing
+        researchLogger.resumeSession()
     }
 
     // End the game
     func endGame() {
         currentState = .finished
+        researchLogger.endSession()
     }
 
     // Reset everything to beginning
     func resetGame() {
+        researchLogger.endSession()
         players.forEach { $0.disconnect() }
 
         gameStartTime = nil

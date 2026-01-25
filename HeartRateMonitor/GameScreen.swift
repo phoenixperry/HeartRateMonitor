@@ -12,9 +12,25 @@ struct GameScreen: View {
             HStack {
                 Text("Synchronization: \(Int(gameStateManager.calculateSynchronization()))%")
                     .font(.headline)
-                
+
+                // Recording indicator
+                if ResearchLogger.shared.isRecording {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 8, height: 8)
+                        Text("REC")
+                            .font(.caption.bold())
+                            .foregroundColor(.red)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(4)
+                }
+
                 Spacer()
-                
+
                 Text(timeString(from: timeRemaining))
                     .font(.headline)
                     .foregroundColor(timeRemaining < 30 ? .red : .primary)
@@ -137,8 +153,12 @@ struct ResultsScreen: View {
                     Text("Duration: \(formattedDuration(from: startTime))")
                         .font(.title3)
                 }
-                
-                // More stats could go here
+
+                // Research data points
+                if ResearchLogger.shared.lastSessionRecordCount > 0 {
+                    Text("Data Points Recorded: \(ResearchLogger.shared.lastSessionRecordCount)")
+                        .font(.title3)
+                }
             }
             .padding()
             .frame(maxWidth: 500)

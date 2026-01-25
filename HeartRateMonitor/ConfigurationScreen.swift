@@ -6,6 +6,7 @@ struct ConfigurationScreen: View {
     @State private var showResetAlert = false
     @State private var showRemoveAlert = false
     @State private var deviceToRemove: UUID?
+    @State private var researchLoggingEnabled = ResearchLogger.shared.isEnabled
 
     var body: some View {
         VStack(spacing: 20) {
@@ -126,6 +127,37 @@ struct ConfigurationScreen: View {
                 .frame(minWidth: 300)
             }
             .padding()
+
+            Divider()
+
+            // Research Settings section
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Research Settings")
+                    .font(.headline)
+
+                HStack {
+                    Toggle("Enable Research Logging", isOn: $researchLoggingEnabled)
+                        .onChange(of: researchLoggingEnabled) { _, newValue in
+                            ResearchLogger.shared.isEnabled = newValue
+                        }
+
+                    Spacer()
+
+                    Button(action: {
+                        ResearchLogger.shared.openLogsFolder()
+                    }) {
+                        HStack {
+                            Image(systemName: "folder")
+                            Text("Open Logs Folder")
+                        }
+                    }
+                }
+
+                Text("When enabled, heart rate and synchronization data is logged to CSV files in your iCloud Drive for research analysis.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal)
 
             Divider()
 

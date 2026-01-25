@@ -14,7 +14,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var espManager:ESPPeripheralManager?
     var heartRateManager:HeartRateManager?
     func applicationWillTerminate(_ notification: Notification) {
-            print("App Quitting, disconnecting from ESP")
+        print("App Quitting, disconnecting from ESP")
+
+        // End any active research logging session
+        ResearchLogger.shared.endSession()
+
         espManager?.disconnectCurrentPeripheral()
         heartRateManager?.discoveredPeripherals.removeAll()
     }
