@@ -58,11 +58,28 @@ class ConfigurationManager: NSObject, ObservableObject {
         let appFolder = appSupport.appendingPathComponent("HeartRateMonitor")
         self.configURL = appFolder.appendingPathComponent("config.json")
 
+        print("📂 Config path: \(configURL.path)")
+
         // Ensure directory exists
-        try? FileManager.default.createDirectory(at: appFolder, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: appFolder, withIntermediateDirectories: true)
+            print("📂 Directory ensured at: \(appFolder.path)")
+        } catch {
+            print("⚠️ Failed to create directory: \(error)")
+        }
+
+        // Check if file exists before loading
+        let fileExists = FileManager.default.fileExists(atPath: configURL.path)
+        print("📂 Config file exists: \(fileExists)")
 
         // Load or create config
-        self.config = Self.loadConfig(from: configURL) ?? .empty
+        if let loadedConfig = Self.loadConfig(from: configURL) {
+            self.config = loadedConfig
+            print("✅ Loaded existing config: \(loadedConfig.monitors.count) monitors, \(loadedConfig.selectedPlayerUUIDs.count) selected, playerCount: \(loadedConfig.playerCount)")
+        } else {
+            self.config = .empty
+            print("📝 Starting with empty config (no existing file found)")
+        }
 
         super.init()
 
@@ -80,17 +97,28 @@ class ConfigurationManager: NSObject, ObservableObject {
 
         do {
             let data = try Data(contentsOf: url)
-            let config = try JSONDecoder().decode(AppConfiguration.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let config = try decoder.decode(AppConfiguration.self, from: data)
             print("📁 Loaded config with \(config.monitors.count) monitors, \(config.selectedPlayerUUIDs.count) selected")
             return config
         } catch {
-            print("⚠️ Failed to load config: \(error). Resetting to default.")
-            try? FileManager.default.removeItem(at: url)
+            print("⚠️ Failed to decode config: \(error)")
+            print("⚠️ Keeping existing file, starting with empty config")
+            // Don't delete the file - user might want to recover it
             return nil
         }
     }
 
     func saveConfig() {
+        // Don't save empty config if a file already exists (prevents accidental overwrites)
+        if config.monitors.isEmpty && config.selectedPlayerUUIDs.isEmpty {
+            if FileManager.default.fileExists(atPath: configURL.path) {
+                print("⚠️ Skipping save: won't overwrite existing config with empty config")
+                return
+            }
+        }
+
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted

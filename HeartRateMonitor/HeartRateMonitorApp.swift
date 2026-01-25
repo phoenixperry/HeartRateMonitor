@@ -4,16 +4,15 @@ import SwiftUI
 struct HeartRateMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-    // Shared ESP manager for haptic feedback
-    let espManager = ESPPeripheralManager()
-
     // Configuration manager handles device discovery and persistence
-    @StateObject private var configManager = ConfigurationManager()
+    // Created ONCE and shared with GameStateManager
+    @StateObject private var configManager: ConfigurationManager
 
     // Game state manager coordinates gameplay
     @StateObject private var gameStateManager: GameStateManager
 
     init() {
+        // Create single instances to be shared
         let espMgr = ESPPeripheralManager()
         let configMgr = ConfigurationManager()
 
@@ -23,12 +22,9 @@ struct HeartRateMonitorApp: App {
             configManager: configMgr
         )
 
-        // Store as StateObjects
+        // Store as StateObjects - only initialize once, not at declaration
         self._configManager = StateObject(wrappedValue: configMgr)
         self._gameStateManager = StateObject(wrappedValue: gameState)
-
-        // Note: espManager property is separate instance for backward compat
-        // The one passed to GameStateManager is the one that matters
     }
 
     var body: some Scene {
