@@ -8,10 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		C62D3DA72DB2B250001C4478 /* ORSSerial in Frameworks */ = {isa = PBXBuildFile; productRef = C62D3DA62DB2B250001C4478 /* ORSSerial */; };
+		C6E2FA1B2E158BF700B19D34 /* WaveformBreathingArtwrok.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6E2FA1A2E158BF700B19D34 /* WaveformBreathingArtwrok.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		C6583EEE2D78A325006A25CB /* HeartRateMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HeartRateMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6E2FA1A2E158BF700B19D34 /* WaveformBreathingArtwrok.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBreathingArtwrok.swift; sourceTree = "<group>"; };
 		C6E42C892DB2BA57008697AB /* HeartRateMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HeartRateMonitor.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -51,6 +53,7 @@
 		C6583EE52D78A325006A25CB = {
 			isa = PBXGroup;
 			children = (
+				C6E2FA1A2E158BF700B19D34 /* WaveformBreathingArtwrok.swift */,
 				C6E42C892DB2BA57008697AB /* HeartRateMonitor.entitlements */,
 				C6583EF02D78A325006A25CB /* HeartRateMonitor */,
 				C6583EEF2D78A325006A25CB /* Products */,
@@ -143,6 +146,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C6E2FA1B2E158BF700B19D34 /* WaveformBreathingArtwrok.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,10 +1,15 @@
-// GameScreen.swift
 import SwiftUI
 
 struct GameScreen: View {
     @ObservedObject var gameStateManager: GameStateManager
     @State private var timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var timeRemaining: TimeInterval = 0
+    
+    // Projection mapping controls - these should be persisted between sessions
+    @State private var visualScale: CGFloat = 1.0
+    @State private var offsetX: CGFloat = 0.0
+    @State private var offsetY: CGFloat = 0.0
+    @State private var showControls: Bool = false
     
     var body: some View {
         VStack(spacing: 40) {
@@ -35,7 +40,8 @@ struct GameScreen: View {
                     .font(.headline)
                     .foregroundColor(timeRemaining < 30 ? .red : .primary)
             }
-            .padding()
+            .background(Color.black)
+            .clipped()
             
             // Heart rate displays - dynamic player grid
             LazyVGrid(columns: gridColumns, spacing: 30) {
@@ -54,12 +60,8 @@ struct GameScreen: View {
                 Button("End Experience") {
                     gameStateManager.endGame()
                 }
-                .buttonStyle(.bordered)
-                .foregroundColor(.red)
             }
-            .padding()
         }
-        .padding()
         .onAppear {
             if let startTime = gameStateManager.gameStartTime {
                 let elapsed = Date().timeIntervalSince(startTime) - gameStateManager.totalPausedTime
@@ -101,43 +103,12 @@ struct GameScreen: View {
     }
 }
 
-// PausedScreen.swift
-import SwiftUI
-
-struct PausedScreen: View {
-    @ObservedObject var gameStateManager: GameStateManager
+#Preview {
+    let espManager = ESPPeripheralManager()
     
-    var body: some View {
-        VStack(spacing: 30) {
-            Text("Experience Paused")
-                .font(.largeTitle)
-            
-            Text("Take a moment to breathe...")
-                .font(.title2)
-            
-            HStack(spacing: 20) {
-                Button("Resume") {
-                    gameStateManager.resumeGame()
-                }
-                .buttonStyle(.borderedProminent)
-                
-                Button("End Experience") {
-                    gameStateManager.endGame()
-                }
-                .buttonStyle(.bordered)
-                .foregroundColor(.red)
-            }
-            .padding(.top, 40)
-        }
-        .padding()
-    }
-}
-
-// ResultsScreen.swift
-import SwiftUI
-
-struct ResultsScreen: View {
-    @ObservedObject var gameStateManager: GameStateManager
+    let player1 = PlayerCardViewModel(id: 1, deviceUUID: UUID(), espManager: espManager)
+    let player2 = PlayerCardViewModel(id: 2, deviceUUID: UUID(), espManager: espManager)
+    let player3 = PlayerCardViewModel(id: 3, deviceUUID: UUID(), espManager: espManager)
     
     var body: some View {
         VStack(spacing: 40) {
@@ -178,10 +149,5 @@ struct ResultsScreen: View {
         .padding()
     }
     
-    private func formattedDuration(from startTime: Date) -> String {
-        let duration = Date().timeIntervalSince(startTime)
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        return String(format: "%d min %d sec", minutes, seconds)
-    }
+    return GameScreen(gameStateManager: gameStateManager)
 }
