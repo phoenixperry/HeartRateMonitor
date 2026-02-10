@@ -28,6 +28,13 @@ class GameStateManager: ObservableObject {
     // Research logger reference
     private let researchLogger = ResearchLogger.shared
 
+    // Simulation
+    private var simulationProvider: SimulatedHeartRateProvider?
+
+    var isSimulationEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "SimulateHeartRateMonitors")
+    }
+
     // Game metrics
     @Published var gameStartTime: Date? = nil
     @Published var gameDuration: TimeInterval = 180 // 3 minutes default
@@ -59,18 +66,45 @@ class GameStateManager: ObservableObject {
         players.forEach { $0.disconnect() }
         players.removeAll()
         cancellables.removeAll()
+        simulationProvider?.stop()
+        simulationProvider = nil
 
-        // Create new players from config
-        for (index, uuid) in configManager.config.selectedPlayerUUIDs.prefix(configManager.config.playerCount).enumerated() {
-            let player = PlayerCardViewModel(
-                id: index + 1,
-                deviceUUID: uuid,
-                espManager: espManager
-            )
-            players.append(player)
+        if isSimulationEnabled {
+            let count = configManager.config.playerCount
+            // Create simulated players with dummy UUIDs
+            for i in 0..<count {
+                let player = PlayerCardViewModel(
+                    id: i + 1,
+                    deviceUUID: UUID(),
+                    espManager: espManager,
+                    simulated: true
+                )
+                player.isConnected = true
+                players.append(player)
+            }
+
+            // Create and start simulation provider
+            let provider = SimulatedHeartRateProvider(playerCount: count)
+            provider.onUpdate = { [weak self] index, bpm in
+                guard let self = self, index < self.players.count else { return }
+                self.players[index].updateSimulatedBPM(bpm)
+            }
+            provider.start()
+            self.simulationProvider = provider
+
+            print("🔄 Rebuilt \(players.count) simulated players")
+        } else {
+            // Create real players from config
+            for (index, uuid) in configManager.config.selectedPlayerUUIDs.prefix(configManager.config.playerCount).enumerated() {
+                let player = PlayerCardViewModel(
+                    id: index + 1,
+                    deviceUUID: uuid,
+                    espManager: espManager
+                )
+                players.append(player)
+            }
+            print("🔄 Rebuilt \(players.count) players from config")
         }
-
-        print("🔄 Rebuilt \(players.count) players from config")
 
         // Re-setup state transitions for new players
         setupStateTransitions()
@@ -126,15 +160,20 @@ class GameStateManager: ObservableObject {
         gameStartTime = Date()
         currentState = .playing
 
-        // Start research logging with data provider
-        researchLogger.startSession(playerCount: playerCount) { [weak self] in
-            guard let self = self else {
-                return LogDataPoint(playerBPMs: [], syncScore: 0, activePlayerCount: 0)
+        if isSimulationEnabled {
+            // Switch simulation to convergence mode
+            simulationProvider?.startPlaying()
+        } else {
+            // Start research logging with data provider (skip during simulation)
+            researchLogger.startSession(playerCount: playerCount) { [weak self] in
+                guard let self = self else {
+                    return LogDataPoint(playerBPMs: [], syncScore: 0, activePlayerCount: 0)
+                }
+                let bpms = self.players.map { $0.heartRate }
+                let syncScore = self.calculateSynchronization()
+                let activeCount = self.connectedPlayerCount
+                return LogDataPoint(playerBPMs: bpms, syncScore: syncScore, activePlayerCount: activeCount)
             }
-            let bpms = self.players.map { $0.heartRate }
-            let syncScore = self.calculateSynchronization()
-            let activeCount = self.connectedPlayerCount
-            return LogDataPoint(playerBPMs: bpms, syncScore: syncScore, activePlayerCount: activeCount)
         }
     }
 
@@ -160,12 +199,15 @@ class GameStateManager: ObservableObject {
     // End the game
     func endGame() {
         currentState = .finished
+        simulationProvider?.stop()
         researchLogger.endSession()
     }
 
     // Reset everything to beginning
     func resetGame() {
         researchLogger.endSession()
+        simulationProvider?.stop()
+        simulationProvider = nil
         players.forEach { $0.disconnect() }
 
         gameStartTime = nil

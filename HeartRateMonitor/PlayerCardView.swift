@@ -42,40 +42,51 @@ struct PlayerCardView: View {
                 }
             }
             
-            // Connection controls
-            HStack {
-                Button(action: {
-                    // Connect and prepare for animation
-                    viewModel.connect()
-                }) {
-                    Text("Connect")
-                        .frame(width: 100)
+            if viewModel.isSimulated {
+                // Simulated badge
+                Text("Simulated")
+                    .font(.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.purple.opacity(0.2))
+                    .foregroundColor(.purple)
+                    .cornerRadius(6)
+            } else {
+                // Connection controls
+                HStack {
+                    Button(action: {
+                        // Connect and prepare for animation
+                        viewModel.connect()
+                    }) {
+                        Text("Connect")
+                            .frame(width: 100)
+                    }
+                    .disabled(viewModel.isConnected)
+
+                    Button(action: {
+                        // Stop animation and disconnect
+                        shouldAnimate = false
+                        viewModel.disconnect()
+                    }) {
+                        Text("Disconnect")
+                            .frame(width: 100)
+                    }
+                    .disabled(!viewModel.isConnected)
                 }
-                .disabled(viewModel.isConnected)
-                
+
                 Button(action: {
-                    // Stop animation and disconnect
-                    shouldAnimate = false
-                    viewModel.disconnect()
+                    viewModel.startPlay()
+                    shouldAnimate = true  // Explicitly start animation
                 }) {
-                    Text("Disconnect")
-                        .frame(width: 100)
+                    Text(viewModel.hasStartedPlay ? "You're in the group" : "Join the group!")
+                        .frame(width: 150, height: 44)
+                        .background(viewModel.hasStartedPlay ? Color.gray : Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
                 }
-                .disabled(!viewModel.isConnected)
+                .buttonStyle(.plain)
+                .disabled(!viewModel.isConnected || viewModel.hasStartedPlay)
             }
-            
-            Button(action: {
-                viewModel.startPlay()
-                shouldAnimate = true  // Explicitly start animation
-            }) {
-                Text(viewModel.hasStartedPlay ? "You're in the group" : "Join the group!")
-                    .frame(width: 150, height: 44)
-                    .background(viewModel.hasStartedPlay ? Color.gray : Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-            }
-            .buttonStyle(.plain)
-            .disabled(!viewModel.isConnected || viewModel.hasStartedPlay)
         }
         .padding()
         .frame(width: 240)

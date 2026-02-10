@@ -5,26 +5,29 @@ import CoreBluetooth
 class PlayerCardViewModel: ObservableObject, Identifiable {
     let id: Int
     let deviceUUID: UUID
+    let isSimulated: Bool
 
     @Published var isConnected: Bool = false
     @Published var hasStartedPlay: Bool = false
     @Published var heartRate: Int = 0
     @Published var currentScale:CGFloat = 1.0
-    
+
     private var lastSentBPM: Int = 0
     private let oscQueue = DispatchQueue(label: "oscQueue", qos: .userInitiated)
     private let bluetoothQueue = DispatchQueue(label: "bluetoothQueue", qos: .userInitiated)
 
-    private let heartRateManager = HeartRateManager()
+    private var heartRateManager: HeartRateManager?
     private let espManager: ESPPeripheralManager
     private let oscManager = NativeOSCManager()
 
     // MARK: - Init
 
-    init(id: Int, deviceUUID: UUID, espManager: ESPPeripheralManager) {
+    init(id: Int, deviceUUID: UUID, espManager: ESPPeripheralManager, simulated: Bool = false) {
         self.id = id
         self.deviceUUID = deviceUUID
         self.espManager = espManager
+        self.isSimulated = simulated
+        self.heartRateManager = simulated ? nil : HeartRateManager()
     }
 
     // MARK: - Data Sending
@@ -80,23 +83,37 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         }
     }
 
+    // MARK: - Simulation
+
+    func updateSimulatedBPM(_ bpm: Int) {
+        guard isSimulated else { return }
+        DispatchQueue.main.async {
+            if self.heartRate != bpm {
+                self.heartRate = bpm
+            }
+            self.cycleDidComplete()
+        }
+    }
+
     // MARK: - Bluetooth Lifecycle
 
     func connect() {
+        guard !isSimulated else { return }
+
         // Reset state
         hasStartedPlay = false
         isConnected = false
         heartRate = 0
-        
+
         // Set up callbacks
-        heartRateManager.onConnect = { [weak self] in
+        heartRateManager?.onConnect = { [weak self] in
             DispatchQueue.main.async {
                 self?.isConnected = true
                 print("✅ Player \(self?.id ?? 0) connected")
             }
         }
 
-        heartRateManager.onHeartRateUpdate = { [weak self] bpm in
+        heartRateManager?.onHeartRateUpdate = { [weak self] bpm in
             guard let self = self else { return }
 
             DispatchQueue.main.async {
@@ -115,12 +132,14 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
         // Attempt connection
         print("🔗 Connecting Player \(id) to device: \(deviceUUID)")
-        heartRateManager.connectToPeripheral(with: deviceUUID)
+        heartRateManager?.connectToPeripheral(with: deviceUUID)
     }
 
     func disconnect() {
-        heartRateManager.disconnectCurrentPeripheral()
-        
+        guard !isSimulated else { return }
+
+        heartRateManager?.disconnectCurrentPeripheral()
+
         DispatchQueue.main.async {
             self.isConnected = false
             self.hasStartedPlay = false

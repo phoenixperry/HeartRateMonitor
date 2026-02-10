@@ -7,6 +7,7 @@ struct ConfigurationScreen: View {
     @State private var showRemoveAlert = false
     @State private var deviceToRemove: UUID?
     @State private var researchLoggingEnabled = ResearchLogger.shared.isEnabled
+    @State private var simulationEnabled = UserDefaults.standard.bool(forKey: "SimulateHeartRateMonitors")
 
     var body: some View {
         VStack(spacing: 20) {
@@ -110,7 +111,13 @@ struct ConfigurationScreen: View {
                     Spacer()
 
                     // Validation status
-                    if !configManager.configurationNeeded {
+                    if simulationEnabled {
+                        HStack {
+                            Image(systemName: "waveform.path")
+                                .foregroundColor(.purple)
+                            Text("Simulated data will be used for all players")
+                        }
+                    } else if !configManager.configurationNeeded {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
@@ -126,7 +133,32 @@ struct ConfigurationScreen: View {
                 }
                 .frame(minWidth: 300)
             }
+            .disabled(simulationEnabled)
+            .opacity(simulationEnabled ? 0.4 : 1.0)
             .padding()
+
+            Divider()
+
+            // Development Settings section
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Development Settings")
+                    .font(.headline)
+
+                Toggle("Simulate Heart Rate Monitors", isOn: $simulationEnabled)
+                    .onChange(of: simulationEnabled) { _, newValue in
+                        UserDefaults.standard.set(newValue, forKey: "SimulateHeartRateMonitors")
+                        if newValue {
+                            // Force-disable research logging during simulation
+                            researchLoggingEnabled = false
+                            ResearchLogger.shared.isEnabled = false
+                        }
+                    }
+
+                Text("When enabled, simulated BPM data is generated for all players without needing physical Bluetooth heart rate monitors.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal)
 
             Divider()
 
@@ -140,6 +172,13 @@ struct ConfigurationScreen: View {
                         .onChange(of: researchLoggingEnabled) { _, newValue in
                             ResearchLogger.shared.isEnabled = newValue
                         }
+                        .disabled(simulationEnabled)
+
+                    if simulationEnabled {
+                        Text("(Disabled during simulation)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
 
                     Spacer()
 
@@ -179,7 +218,7 @@ struct ConfigurationScreen: View {
                     gameStateManager.closeConfiguration()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(configManager.configurationNeeded)
+                .disabled(!simulationEnabled && configManager.configurationNeeded)
             }
             .padding()
         }

@@ -20,6 +20,10 @@ class ConfigurationManager: NSObject, ObservableObject {
 
     /// Returns true if configuration screen should be shown
     var configurationNeeded: Bool {
+        // Simulation mode bypasses device configuration
+        if UserDefaults.standard.bool(forKey: "SimulateHeartRateMonitors") {
+            return false
+        }
         // No selected players
         if config.selectedPlayerUUIDs.isEmpty {
             return true
