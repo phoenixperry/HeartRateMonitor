@@ -144,7 +144,9 @@ class ConfigurationManager: NSObject, ObservableObject {
     // MARK: - Device Discovery
 
     func startScan(duration: TimeInterval = 10.0) {
+        print("🔬 CFG: startScan() called — bluetoothState=\(centralManager.state.rawValue) (.poweredOn=\(CBManagerState.poweredOn.rawValue)) at \(Date())")
         guard centralManager.state == .poweredOn else {
+            print("🔬 CFG: startScan() SKIPPED — Bluetooth not ready (state=\(centralManager.state.rawValue))")
             print("⚠️ Bluetooth not ready for scanning")
             return
         }
@@ -153,11 +155,38 @@ class ConfigurationManager: NSObject, ObservableObject {
         discoveredDevices.removeAll()
         isScanning = true
 
+        // Surface already-connected peripherals up front. They won't appear in scan
+        // callbacks because connected peripherals stop advertising.
+        refreshConnectedDevices()
+
         // Scan for heart rate service
         centralManager.scanForPeripherals(withServices: [heartRateServiceUUID], options: [
             CBCentralManagerScanOptionAllowDuplicatesKey: false
         ])
         print("🔍 Started scanning for heart rate devices...")
+        print("🔬 CFG: scan armed for \(duration)s, filtering serviceUUID=180D")
+
+        // 🔬 DIAGNOSTIC: ask CoreBluetooth what it already knows, independent of advertising.
+        let pairedUUIDs = config.monitors.map { $0.uuid }
+        if !pairedUUIDs.isEmpty {
+            let known = centralManager.retrievePeripherals(withIdentifiers: pairedUUIDs)
+            print("🔬 CFG: retrievePeripherals(withIdentifiers:) returned \(known.count)/\(pairedUUIDs.count) paired UUIDs:")
+            for p in known {
+                print("🔬 CFG:   • known peripheral name=\(p.name ?? "nil") uuid=\(p.identifier) state=\(p.state.rawValue)")
+            }
+            let missing = pairedUUIDs.filter { uuid in !known.contains(where: { $0.identifier == uuid }) }
+            for uuid in missing {
+                print("🔬 CFG:   • NOT known to CoreBluetooth: \(uuid)")
+            }
+        } else {
+            print("🔬 CFG: no paired monitors to query via retrievePeripherals")
+        }
+
+        let connected = centralManager.retrieveConnectedPeripherals(withServices: [heartRateServiceUUID])
+        print("🔬 CFG: retrieveConnectedPeripherals(withServices:[180D]) returned \(connected.count) device(s):")
+        for p in connected {
+            print("🔬 CFG:   • already-connected name=\(p.name ?? "nil") uuid=\(p.identifier) state=\(p.state.rawValue)")
+        }
 
         // Auto-stop after duration
         scanTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
@@ -173,6 +202,30 @@ class ConfigurationManager: NSObject, ObservableObject {
             centralManager.stopScan()
             isScanning = false
             print("🔍 Stopped scanning. Found \(discoveredDevices.count) devices.")
+        }
+    }
+
+    /// Surface peripherals that the system already has connected for the heart rate service.
+    /// A connected strap stops advertising, so scanning alone will never see it — but it's
+    /// absolutely "online" from the user's point of view. Merging these into discoveredDevices
+    /// makes them show as "Assigned" / "Paired" rather than "Offline".
+    func refreshConnectedDevices() {
+        guard centralManager.state == .poweredOn else { return }
+
+        let connected = centralManager.retrieveConnectedPeripherals(withServices: [heartRateServiceUUID])
+        for peripheral in connected {
+            // Don't double-insert if the scan already saw it.
+            if discoveredDevices.contains(where: { $0.uuid == peripheral.identifier }) { continue }
+
+            // Prefer the live CB name, then the name we stored when pairing, then a placeholder.
+            let displayName = peripheral.name ?? config.monitor(for: peripheral.identifier)?.name ?? "Unknown Device"
+            let device = DiscoveredDevice(peripheral: peripheral, name: displayName, rssi: 0)
+            discoveredDevices.append(device)
+            print("🔗 Surfaced already-connected peripheral: \(displayName) (\(peripheral.identifier))")
+
+            if config.monitors.contains(where: { $0.uuid == peripheral.identifier }) {
+                updateLastSeen(for: peripheral.identifier)
+            }
         }
     }
 
@@ -198,74 +251,22 @@ class ConfigurationManager: NSObject, ObservableObject {
     // MARK: - Device Management
 
     func addMonitor(from device: DiscoveredDevice) {
-        // Check if already exists
         if let index = config.monitors.firstIndex(where: { $0.uuid == device.uuid }) {
-            // Update existing
             config.monitors[index].name = device.name
             config.monitors[index].lastSeen = Date()
         } else {
-            // Add new
             let monitor = MonitorDevice(uuid: device.uuid, name: device.name)
             config.monitors.append(monitor)
             print("➕ Added monitor: \(device.name)")
         }
         saveConfig()
-        updateDiscoveredDeviceStatus()
     }
 
     func removeMonitor(uuid: UUID) {
-        // Remove from monitors
         config.monitors.removeAll { $0.uuid == uuid }
-
-        // Also remove from selected if present
         config.selectedPlayerUUIDs.removeAll { $0 == uuid }
-
         saveConfig()
-        updateDiscoveredDeviceStatus()
         print("➖ Removed monitor: \(uuid)")
-    }
-
-    func assignToPlayer(uuid: UUID, playerSlot: Int) {
-        guard playerSlot >= 1 && playerSlot <= config.playerCount else { return }
-
-        let index = playerSlot - 1
-
-        // Ensure array is large enough
-        while config.selectedPlayerUUIDs.count < playerSlot {
-            // Fill with placeholder - we'll need to handle this differently
-            // Actually, let's use a different approach - store as optional or use a dictionary
-            config.selectedPlayerUUIDs.append(uuid) // This is the first/only assignment
-            saveConfig()
-            updateDiscoveredDeviceStatus()
-            return
-        }
-
-        // Remove this UUID from any existing slot
-        config.selectedPlayerUUIDs.removeAll { $0 == uuid }
-
-        // Ensure array is correct size again
-        while config.selectedPlayerUUIDs.count < index {
-            // Need placeholder handling - for now just append at end
-        }
-
-        if index < config.selectedPlayerUUIDs.count {
-            config.selectedPlayerUUIDs[index] = uuid
-        } else {
-            config.selectedPlayerUUIDs.append(uuid)
-        }
-
-        saveConfig()
-        updateDiscoveredDeviceStatus()
-        print("✅ Assigned \(uuid) to player \(playerSlot)")
-    }
-
-    func unassignPlayer(playerSlot: Int) {
-        guard playerSlot >= 1 && playerSlot <= config.selectedPlayerUUIDs.count else { return }
-        let index = playerSlot - 1
-        config.selectedPlayerUUIDs.remove(at: index)
-        saveConfig()
-        updateDiscoveredDeviceStatus()
-        print("❌ Unassigned player \(playerSlot)")
     }
 
     func setPlayerCount(_ count: Int) {
@@ -286,21 +287,13 @@ class ConfigurationManager: NSObject, ObservableObject {
             saveConfig()
         }
     }
-
-    // MARK: - Private Helpers
-
-    private func updateDiscoveredDeviceStatus() {
-        for i in 0..<discoveredDevices.count {
-            discoveredDevices[i].isPaired = config.monitors.contains { $0.uuid == discoveredDevices[i].uuid }
-            discoveredDevices[i].isSelected = config.selectedPlayerUUIDs.contains(discoveredDevices[i].uuid)
-        }
-    }
 }
 
 // MARK: - CBCentralManagerDelegate
 
 extension ConfigurationManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        print("🔬 CFG: centralManagerDidUpdateState → \(central.state.rawValue) at \(Date())")
         bluetoothState = central.state
 
         switch central.state {
@@ -322,30 +315,33 @@ extension ConfigurationManager: CBCentralManagerDelegate {
                         didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any],
                         rssi RSSI: NSNumber) {
+        // 🔬 DIAGNOSTIC: log every callback BEFORE any guards drop it
+        let advLocalName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let isPairedUUID = config.monitors.contains { $0.uuid == peripheral.identifier }
+        print("🔬 CFG: didDiscover peripheral.name=\(peripheral.name ?? "nil") advLocalName=\(advLocalName ?? "nil") uuid=\(peripheral.identifier) rssi=\(RSSI) paired=\(isPairedUUID)")
+
         // Skip if no name
-        guard let name = peripheral.name, !name.isEmpty else { return }
+        guard let name = peripheral.name, !name.isEmpty else {
+            if isPairedUUID {
+                print("🔬 CFG:   ⚠️ DROPPED paired device — name was nil/empty (this is one possible cause of false 'Offline')")
+            }
+            return
+        }
 
         // Skip duplicates
         guard !discoveredDevices.contains(where: { $0.uuid == peripheral.identifier }) else { return }
 
-        let isPaired = config.monitors.contains { $0.uuid == peripheral.identifier }
-        let isSelected = config.selectedPlayerUUIDs.contains(peripheral.identifier)
+        // Re-check inside the same synchronous tick we're about to mutate on.
+        // Delegate already runs on main (CBCentralManager init used queue: nil),
+        // so the check and append must be atomic — no async hop between them.
+        guard !discoveredDevices.contains(where: { $0.uuid == peripheral.identifier }) else { return }
 
-        let device = DiscoveredDevice(
-            peripheral: peripheral,
-            rssi: RSSI.intValue,
-            isPaired: isPaired,
-            isSelected: isSelected
-        )
+        let device = DiscoveredDevice(peripheral: peripheral, rssi: RSSI.intValue)
+        discoveredDevices.append(device)
+        print("🔍 Discovered: \(name) (\(peripheral.identifier)) RSSI: \(RSSI)")
 
-        DispatchQueue.main.async {
-            self.discoveredDevices.append(device)
-            print("🔍 Discovered: \(name) (\(peripheral.identifier)) RSSI: \(RSSI)")
-
-            // Update lastSeen if this is a known device
-            if isPaired {
-                self.updateLastSeen(for: peripheral.identifier)
-            }
+        if isPairedUUID {
+            updateLastSeen(for: peripheral.identifier)
         }
     }
 }

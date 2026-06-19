@@ -1,0 +1,12 @@
+{
+  "name": "osc-monitor",
+  "version": "1.0.0",
+  "description": "Pass-through UDP→WebSocket bridge + p5/Tone.js viewer for HeartRateMonitor OSC traffic.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

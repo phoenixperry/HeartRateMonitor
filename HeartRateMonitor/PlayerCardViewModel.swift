@@ -50,7 +50,15 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         // Capture value once to ensure consistency
         let bpmToSend = heartRate
         sendHapticsToESP(id)
-        
+
+        // Per-heartbeat OSC pulse, fires every cycle regardless of BPM change.
+        // Separate channel from /player/N/bpm — consumers can pick whichever fits.
+        let beatBPM = max(0, bpmToSend)
+        oscQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.oscManager.sendBeat(forPlayer: self.id, bpm: UInt16(beatBPM))
+        }
+
         // Skip if no meaningful data to send or no change
         guard bpmToSend > 0 && bpmToSend != lastSentBPM else { return }
         //make sure that the bpm actually needs updating

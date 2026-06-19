@@ -149,7 +149,7 @@
 //            .background(Color.black.opacity(0.05))
 //            .cornerRadius(12)
 //            
-//            Text("Thank you for participating in Resonance")
+//            Text("Thank you for participating in Resonant Thrum")
 //                .font(.title2)
 //                .padding(.top)
 //            

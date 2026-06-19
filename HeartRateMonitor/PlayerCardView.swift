@@ -2,118 +2,134 @@ import SwiftUI
 
 struct PlayerCardView: View {
     @ObservedObject var viewModel: PlayerCardViewModel
-    
-    // MARK: - Animation State
-    // This is the source of truth for animation
     @State private var shouldAnimate = false
-    
+
+    private let circleSize: CGFloat = 168
+
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Player \(viewModel.id)")
-                .font(.title2)
-            
-            // Heart rate visualization
-            ZStack {
-                if viewModel.isConnected {
-                    WaveformBreathingCircle(
-                        bpm: $viewModel.heartRate,
-                        shouldAnimate: $shouldAnimate
-    
-                    ) {
-                        viewModel.cycleDidComplete()
-                    }
-                    
-                    .frame(width: 140, height: 140)
-                    .overlay(
-                        Text("\(viewModel.heartRate) bpm")
-                            .font(.caption)
-                            .foregroundColor(.white)
-                    )
-                } else {
-                    Circle()
-                        .stroke(Color.gray, lineWidth: 2)
-                        .frame(width: 140, height: 140)
-                        .overlay(
-                            Text("Not Connected")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        )
-                
+        VStack(spacing: 22) {
+            // Eyebrow label
+            HStack {
+                Eyebrow(text: "Player \(viewModel.id)")
+                Spacer()
+                if viewModel.isSimulated {
+                    Eyebrow(text: "Sim", color: Palette.ink)
                 }
             }
-            
-            if viewModel.isSimulated {
-                // Simulated badge
-                Text("Simulated")
-                    .font(.caption)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.purple.opacity(0.2))
-                    .foregroundColor(.purple)
-                    .cornerRadius(6)
-            } else {
-                // Connection controls
-                HStack {
-                    Button(action: {
-                        // Connect and prepare for animation
-                        viewModel.connect()
-                    }) {
-                        Text("Connect")
-                            .frame(width: 100)
-                    }
-                    .disabled(viewModel.isConnected)
 
-                    Button(action: {
-                        // Stop animation and disconnect
-                        shouldAnimate = false
-                        viewModel.disconnect()
-                    }) {
-                        Text("Disconnect")
-                            .frame(width: 100)
-                    }
-                    .disabled(!viewModel.isConnected)
+            // Breathing circle with BPM number centred inside.
+            ZStack {
+                WaveformBreathingCircle(
+                    bpm: $viewModel.heartRate,
+                    shouldAnimate: $shouldAnimate
+                ) {
+                    viewModel.cycleDidComplete()
                 }
+                .frame(width: circleSize, height: circleSize)
 
-                Button(action: {
-                    viewModel.startPlay()
-                    shouldAnimate = true  // Explicitly start animation
-                }) {
-                    Text(viewModel.hasStartedPlay ? "You're in the group" : "Join the group!")
-                        .frame(width: 150, height: 44)
-                        .background(viewModel.hasStartedPlay ? Color.gray : Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-                .buttonStyle(.plain)
-                .disabled(!viewModel.isConnected || viewModel.hasStartedPlay)
+                bpmReadout
+            }
+            .frame(width: circleSize, height: circleSize)
+
+            // Connection state line.
+            stateLine
+
+            // Action area.
+            if !viewModel.isSimulated {
+                actions
             }
         }
-        .padding()
+        .padding(24)
         .frame(width: 240)
-        .background(Color.black.opacity(0.05))
-        .cornerRadius(12)
-        .shadow(radius: 5)
-        .buttonStyle(.plain)
-        // Initialize animation state when view appears (critical for screen transitions)
+        .background(Palette.canvas)
+        .bwOutline(1)
         .onAppear {
-            // When PlayerCardView is created in GameScreen, hasStartedPlay may already be true
-            // but shouldAnimate defaults to false. Sync them on appear.
             shouldAnimate = viewModel.hasStartedPlay && viewModel.isConnected
         }
-        // Add reactive updates for connection state changes
         .onChange(of: viewModel.isConnected) { _, isConnected in
-            if !isConnected {
-                // If disconnected, ensure animation stops
-                shouldAnimate = false
+            shouldAnimate = isConnected ? viewModel.hasStartedPlay : false
+        }
+        .onChange(of: viewModel.hasStartedPlay) { _, hasStarted in
+            shouldAnimate = hasStarted && viewModel.isConnected
+        }
+    }
+
+    // MARK: - Pieces
+
+    private var bpmReadout: some View {
+        VStack(spacing: 0) {
+            if viewModel.isConnected && viewModel.heartRate > 0 {
+                Text("\(viewModel.heartRate)")
+                    .font(Type.display(46, weight: .medium))
+                    .foregroundColor(Palette.ink)
+                Text("bpm")
+                    .font(Type.sans(10, weight: .medium))
+                    .tracking(2.4)
+                    .textCase(.uppercase)
+                    .foregroundColor(Palette.muted)
             } else {
-                // If reconnected while in play mode, restart animation
-                shouldAnimate = viewModel.hasStartedPlay
+                Text("—")
+                    .font(Type.display(46, weight: .medium))
+                    .foregroundColor(Palette.line)
             }
         }
-        // Add reactive updates for play state changes
-        .onChange(of: viewModel.hasStartedPlay) { _, hasStarted in
-            // Update animation state based on play state
-            shouldAnimate = hasStarted && viewModel.isConnected
+    }
+
+    private var stateLine: some View {
+        Text(stateText)
+            .font(Type.sans(10, weight: .medium))
+            .tracking(2)
+            .textCase(.uppercase)
+            .foregroundColor(stateColor)
+    }
+
+    private var stateText: String {
+        if viewModel.isSimulated { return "Simulated stream" }
+        if viewModel.hasStartedPlay { return "In group" }
+        if viewModel.isConnected { return "Connected" }
+        return "Not connected"
+    }
+
+    private var stateColor: Color {
+        viewModel.isConnected ? Palette.ink : Palette.muted
+    }
+
+    private var actions: some View {
+        VStack(spacing: 14) {
+            // Primary: Join the group
+            Button {
+                viewModel.startPlay()
+                shouldAnimate = true
+            } label: {
+                Text(viewModel.hasStartedPlay ? "You're in" : "Join the group")
+            }
+            .buttonStyle(BWPrimaryButtonStyle(minWidth: 170, height: 44))
+            .disabled(!viewModel.isConnected || viewModel.hasStartedPlay)
+            .opacity((!viewModel.isConnected || viewModel.hasStartedPlay) ? 0.4 : 1)
+
+            // Secondary text controls for connection state.
+            HStack(spacing: 14) {
+                Button { viewModel.connect() } label: {
+                    Text("Connect")
+                }
+                .buttonStyle(BWTextLinkButtonStyle())
+                .disabled(viewModel.isConnected)
+                .opacity(viewModel.isConnected ? 0.3 : 1)
+
+                Rectangle()
+                    .fill(Palette.line)
+                    .frame(width: 1, height: 10)
+
+                Button {
+                    shouldAnimate = false
+                    viewModel.disconnect()
+                } label: {
+                    Text("Disconnect")
+                }
+                .buttonStyle(BWTextLinkButtonStyle())
+                .disabled(!viewModel.isConnected)
+                .opacity(!viewModel.isConnected ? 0.3 : 1)
+            }
         }
     }
 }
@@ -124,4 +140,6 @@ struct PlayerCardView: View {
         deviceUUID: UUID(),
         espManager: ESPPeripheralManager()
     ))
+    .padding(40)
+    .background(Palette.canvas)
 }

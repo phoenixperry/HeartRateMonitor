@@ -226,6 +226,13 @@ class GameStateManager: ObservableObject {
     func closeConfiguration() {
         rebuildPlayers()
         currentState = .setup
+        // Smooth the handoff: kick off BLE connection for each real player immediately.
+        // Per-player "Join the group!" stays manual — only the connect step is automatic.
+        // connect() is deferral-aware, so it's safe even if the new HeartRateManager's
+        // central hasn't reached .poweredOn yet.
+        for player in players where !player.isSimulated {
+            player.connect()
+        }
     }
 
     // MARK: - Calculations

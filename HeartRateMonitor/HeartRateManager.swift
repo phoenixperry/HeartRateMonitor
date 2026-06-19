@@ -15,6 +15,11 @@ class HeartRateManager: NSObject, ObservableObject {
     // MARK: - BLE Core
     private var centralManager: CBCentralManager!
     private var heartRatePeripheral: CBPeripheral?
+    // Holds a connect request made before the central reached .poweredOn or
+    // before the peripheral has been seen, so we can complete it asynchronously.
+    private var pendingConnectionUUID: UUID?
+    private var pendingConnectScanTimer: Timer?
+    private let pendingConnectScanTimeout: TimeInterval = 15.0
 
     // MARK: - Constants
     private let heartRateServiceUUID = CBUUID(string: "180D")
@@ -57,16 +62,70 @@ class HeartRateManager: NSObject, ObservableObject {
 //        print(self.heartRateServiceUUID)
     }
 
-    /// 🔗 NEW: Connect directly to known device UUID
+    /// 🔗 Connect directly to a known device UUID.
+    /// Safe to call before the central is `.poweredOn`, and safe even if the system
+    /// has not cached the peripheral — falls back to a service-UUID scan with a timeout.
     func connectToPeripheral(with uuid: UUID) {
-        let peripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
-        if let knownPeripheral = peripherals.first {
-            print("🔗 Connecting to known peripheral: \(knownPeripheral.name ?? "Unknown") with UUID \(uuid)")
-            connectToPeripheral(knownPeripheral)
+        pendingConnectionUUID = uuid
+        if centralManager.state == .poweredOn {
+            attemptPendingConnection()
         } else {
-            print("❌ Could not retrieve peripheral with UUID: \(uuid)")
-            // Optional fallback:
-            // startScanning()
+            print("⏳ Connect request queued for UUID \(uuid) — waiting for Bluetooth (state=\(centralManager.state.rawValue))")
+        }
+    }
+
+    private func attemptPendingConnection() {
+        guard let uuid = pendingConnectionUUID else { return }
+
+        // 1. Fast path: peripheral is in CoreBluetooth's cache.
+        if let knownPeripheral = centralManager.retrievePeripherals(withIdentifiers: [uuid]).first {
+            print("🔗 Connecting to known peripheral: \(knownPeripheral.name ?? "Unknown") with UUID \(uuid)")
+            finishPendingConnect(to: knownPeripheral)
+            return
+        }
+
+        // 2. Already-connected path: the system holds an HR-service link for this UUID.
+        let connectedHR = centralManager.retrieveConnectedPeripherals(withServices: [heartRateServiceUUID])
+        if let connectedPeripheral = connectedHR.first(where: { $0.identifier == uuid }) {
+            print("🔗 Connecting to already-connected peripheral with UUID \(uuid)")
+            finishPendingConnect(to: connectedPeripheral)
+            return
+        }
+
+        // 3. Fallback: scan for it. didDiscover will close the loop when it appears.
+        print("⚠️ Peripheral \(uuid) not in CB cache — scanning for it (timeout \(Int(pendingConnectScanTimeout))s)")
+        startPendingConnectScan()
+    }
+
+    private func finishPendingConnect(to peripheral: CBPeripheral) {
+        pendingConnectionUUID = nil
+        stopPendingConnectScan()
+        connectToPeripheral(peripheral)
+    }
+
+    private func startPendingConnectScan() {
+        guard centralManager.state == .poweredOn else { return }
+        isScanning = true
+        centralManager.scanForPeripherals(withServices: [heartRateServiceUUID], options: nil)
+
+        pendingConnectScanTimer?.invalidate()
+        pendingConnectScanTimer = Timer.scheduledTimer(
+            withTimeInterval: pendingConnectScanTimeout, repeats: false
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            let uuidString = self.pendingConnectionUUID?.uuidString ?? "?"
+            print("⌛️ Connect-scan timed out for UUID \(uuidString) — giving up; user can retry")
+            self.pendingConnectionUUID = nil
+            self.stopPendingConnectScan()
+        }
+    }
+
+    private func stopPendingConnectScan() {
+        pendingConnectScanTimer?.invalidate()
+        pendingConnectScanTimer = nil
+        if isScanning {
+            centralManager.stopScan()
+            isScanning = false
         }
     }
 
@@ -83,6 +142,8 @@ extension HeartRateManager: CBCentralManagerDelegate {
         switch central.state {
         case .poweredOn:
             print("✅ Bluetooth is powered on")
+            // Drain any connect request that arrived before the central was ready.
+            attemptPendingConnection()
         case .poweredOff:
             print("⚠️ Bluetooth is powered off")
             connected = "Please turn on Bluetooth"
@@ -106,12 +167,17 @@ extension HeartRateManager: CBCentralManagerDelegate {
                         didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any],
                         rssi RSSI: NSNumber) {
+        // Pending-connect first: name is often absent in adv packets, don't gate on it.
+        if let pendingUUID = pendingConnectionUUID, peripheral.identifier == pendingUUID {
+            print("🎯 Pending peripheral discovered, connecting: \(peripheral.identifier)")
+            finishPendingConnect(to: peripheral)
+            return
+        }
+
         if let name = peripheral.name, !name.isEmpty {
             print("🔍 Found device: \(name) UUID: \(peripheral.identifier)")
             if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
-                DispatchQueue.main.async {
-                    self.discoveredPeripherals.append(peripheral)
-                }
+                discoveredPeripherals.append(peripheral)
             }
         }
     }

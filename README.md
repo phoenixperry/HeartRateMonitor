@@ -33,8 +33,6 @@ SerialManager.swift & SerialDevicePicker.swift
 Manage serial device connections and allow the user to pick devices.
 OSCManager.swift
 Handles Open Sound Control (OSC) messaging, possibly for sending/receiving data to/from other apps or devices.
-Persistence.swift
-Manages data persistence, likely using Core Data (see the .xcdatamodeld file).
 5. Graphics & Visuals
 BasicMetalView.swift, MetalTestView.swift, MetalShaderView.swift
 Views for rendering custom graphics using Metal (Apple's graphics API).

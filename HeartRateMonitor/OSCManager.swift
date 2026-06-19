@@ -50,6 +50,14 @@ class NativeOSCManager {
         let address = "/player/\(id)/bpm"
         sendOSCMessage(address: address, value: bpm)
     }
+
+    /// Fires on every heartbeat cycle, regardless of whether the BPM value changed.
+    /// Use this when the consumer needs rhythm (e.g. driving per-beat sound) rather
+    /// than just the latest rate.
+    func sendBeat(forPlayer id: Int, bpm: UInt16) {
+        let address = "/player/\(id)/beat"
+        sendOSCMessage(address: address, value: bpm)
+    }
     // specific for wekinator
     func sendGroupBPMs(_ bpmValues: [UInt16]) {
         let address = "/wek/bpm"

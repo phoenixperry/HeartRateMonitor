@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreBluetooth
 
 struct ConfigurationScreen: View {
     @ObservedObject var configManager: ConfigurationManager
@@ -10,215 +11,249 @@ struct ConfigurationScreen: View {
     @State private var simulationEnabled = UserDefaults.standard.bool(forKey: "SimulateHeartRateMonitors")
 
     var body: some View {
+        ZStack {
+            Palette.canvas.ignoresSafeArea()
+            content
+        }
+        .tint(Palette.ink)
+        // Force light appearance inside this view so system widgets (Toggle labels,
+        // alert text, etc.) resolve Color.primary to black against the white canvas.
+        // Without this, Color.primary becomes white in system dark mode and labels
+        // vanish against the forced-white background.
+        .preferredColorScheme(.light)
+    }
+
+    private var content: some View {
         VStack(spacing: 20) {
             // Header
-            Text("Device Configuration")
-                .font(.largeTitle)
-                .bold()
-                .padding(.top)
+            VStack(spacing: 6) {
+                Eyebrow(text: "Settings")
+                Text("Device configuration")
+                    .font(Type.display(28, weight: .medium))
+                    .foregroundColor(Palette.ink)
+                    .kerning(-0.4)
+            }
+            .padding(.top, 8)
 
-            // Player count stepper
-            HStack {
-                Text("Number of Players:")
-                Stepper(
-                    "\(configManager.config.playerCount)",
-                    value: Binding(
-                        get: { configManager.config.playerCount },
-                        set: { configManager.setPlayerCount($0) }
-                    ),
-                    in: AppConfiguration.minPlayers...AppConfiguration.maxPlayers
+            // Player count — custom monochrome stepper.
+            HStack(spacing: 16) {
+                Text("Number of players")
+                    .font(Type.sans(12, weight: .medium))
+                    .tracking(2)
+                    .textCase(.uppercase)
+                    .foregroundColor(Palette.muted)
+
+                MonochromeStepper(
+                    value: configManager.config.playerCount,
+                    range: AppConfiguration.minPlayers...AppConfiguration.maxPlayers,
+                    onChange: { configManager.setPlayerCount($0) }
                 )
-                .frame(width: 120)
             }
             .padding(.horizontal)
 
-            Divider()
+            Hairline()
+                .padding(.vertical, 4)
 
             // Main content in two columns
-            HStack(alignment: .top, spacing: 30) {
+            HStack(alignment: .top, spacing: 36) {
                 // Left column: Device list
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Discovered Devices")
-                            .font(.headline)
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline) {
+                        SectionHeading(
+                            title: "Discovered devices",
+                            detail: configManager.discoveredDevices.isEmpty ? nil : "\(configManager.discoveredDevices.count)"
+                        )
                         Spacer()
                         if configManager.isScanning {
                             ProgressView()
-                                .scaleEffect(0.7)
-                            Text("Scanning...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .scaleEffect(0.6)
+                                .tint(Palette.ink)
+                            Text("Scanning…")
+                                .font(Type.sans(11))
+                                .foregroundColor(Palette.muted)
                         }
                     }
 
-                    // Device list
-                    List {
-                        if configManager.discoveredDevices.isEmpty && !configManager.isScanning {
-                            Text("No devices found. Tap 'Scan' to search.")
-                                .foregroundColor(.secondary)
-                                .italic()
-                        }
+                    // Device list — manual scroll/stack so we have full control of bg + border.
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            if configManager.discoveredDevices.isEmpty && offlinePairedDevices.isEmpty && !configManager.isScanning {
+                                Text("No devices found. Tap 'Scan' to search.")
+                                    .font(Type.sans(12))
+                                    .italic()
+                                    .foregroundColor(Palette.muted)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(14)
+                            }
 
-                        ForEach(configManager.discoveredDevices) { device in
-                            DeviceRow(
-                                device: device,
-                                configManager: configManager,
-                                onRemove: {
-                                    deviceToRemove = device.uuid
-                                    showRemoveAlert = true
-                                }
-                            )
-                        }
+                            ForEach(Array(configManager.discoveredDevices.enumerated()), id: \.element.id) { index, device in
+                                if index > 0 { Hairline() }
+                                DeviceRow(
+                                    device: device,
+                                    configManager: configManager,
+                                    onRemove: {
+                                        deviceToRemove = device.uuid
+                                        showRemoveAlert = true
+                                    }
+                                )
+                                .padding(.horizontal, 14)
+                            }
 
-                        // Show paired but offline devices
-                        ForEach(offlinePairedDevices, id: \.uuid) { monitor in
-                            OfflineDeviceRow(monitor: monitor, configManager: configManager)
+                            if !configManager.discoveredDevices.isEmpty && !offlinePairedDevices.isEmpty {
+                                Hairline()
+                            }
+
+                            ForEach(Array(offlinePairedDevices.enumerated()), id: \.element.uuid) { index, monitor in
+                                if index > 0 { Hairline() }
+                                OfflineDeviceRow(monitor: monitor, configManager: configManager)
+                                    .padding(.horizontal, 14)
+                            }
                         }
                     }
                     .frame(minHeight: 200)
-                    .listStyle(.bordered)
+                    .background(Palette.canvas)
+                    .bwOutline(1)
 
-                    Button(action: { configManager.startScan() }) {
-                        HStack {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                            Text("Scan for Devices")
-                        }
+                    Button {
+                        configManager.startScan()
+                    } label: {
+                        Text("Scan for devices")
                     }
+                    .buttonStyle(BWOutlineButtonStyle(minWidth: 200, height: 38))
                     .disabled(configManager.isScanning || configManager.bluetoothState != .poweredOn)
+                    .opacity((configManager.isScanning || configManager.bluetoothState != .poweredOn) ? 0.4 : 1)
 
                     if configManager.bluetoothState != .poweredOn {
                         Text("Bluetooth is not available")
-                            .font(.caption)
-                            .foregroundColor(.red)
+                            .font(Type.sans(11))
+                            .foregroundColor(Palette.ink)
                     }
                 }
                 .frame(minWidth: 300)
 
-                Divider()
+                Rectangle()
+                    .fill(Palette.line)
+                    .frame(width: 1)
+                    .padding(.vertical, 4)
 
                 // Right column: Player assignments
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Player Assignments")
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionHeading(
+                        title: "Player assignments",
+                        detail: "\(configManager.config.selectedPlayerUUIDs.count)/\(configManager.config.playerCount)"
+                    )
 
-                    ForEach(1...configManager.config.playerCount, id: \.self) { playerNum in
-                        PlayerSlotPicker(
-                            playerNumber: playerNum,
-                            configManager: configManager
-                        )
+                    VStack(spacing: 0) {
+                        ForEach(Array((1...configManager.config.playerCount).enumerated()), id: \.element) { index, playerNum in
+                            if index > 0 { Hairline() }
+                            PlayerSlotPicker(
+                                playerNumber: playerNum,
+                                configManager: configManager
+                            )
+                            .padding(.vertical, 8)
+                        }
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Palette.canvas)
+                    .bwOutline(1)
 
                     Spacer()
-
-                    // Validation status
-                    if simulationEnabled {
-                        HStack {
-                            Image(systemName: "waveform.path")
-                                .foregroundColor(.purple)
-                            Text("Simulated data will be used for all players")
-                        }
-                    } else if !configManager.configurationNeeded {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text("Configuration complete!")
-                        }
-                    } else {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                            Text("Assign devices to all \(configManager.config.playerCount) players")
-                        }
-                    }
                 }
                 .frame(minWidth: 300)
             }
             .disabled(simulationEnabled)
             .opacity(simulationEnabled ? 0.4 : 1.0)
-            .padding()
+            .padding(.vertical, 8)
 
-            Divider()
+            Hairline()
+                .padding(.vertical, 8)
 
-            // Development Settings section
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Development Settings")
-                    .font(.headline)
+            // Development settings — full width, flush left.
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeading(title: "Development settings")
 
                 Toggle("Simulate Heart Rate Monitors", isOn: $simulationEnabled)
+                    .toggleStyle(RadialToggleStyle())
                     .onChange(of: simulationEnabled) { _, newValue in
                         UserDefaults.standard.set(newValue, forKey: "SimulateHeartRateMonitors")
                         if newValue {
-                            // Force-disable research logging during simulation
                             researchLoggingEnabled = false
                             ResearchLogger.shared.isEnabled = false
                         }
                     }
 
-                Text("When enabled, simulated BPM data is generated for all players without needing physical Bluetooth heart rate monitors.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Text("Simulated BPM data is generated for all players without needing physical Bluetooth heart rate monitors.")
+                    .font(Type.sans(11))
+                    .foregroundColor(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Divider()
+            Hairline()
+                .padding(.vertical, 8)
 
-            // Research Settings section
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Research Settings")
-                    .font(.headline)
+            // Research settings — full width, flush left. Open-logs button stays on the right of the header row.
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center) {
+                    SectionHeading(title: "Research settings")
+                    Spacer()
+                    Button {
+                        ResearchLogger.shared.openLogsFolder()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("Open logs folder")
+                        }
+                    }
+                    .buttonStyle(BWOutlineButtonStyle(minWidth: 180, height: 32))
+                }
 
-                HStack {
+                HStack(spacing: 10) {
                     Toggle("Enable Research Logging", isOn: $researchLoggingEnabled)
+                        .toggleStyle(RadialToggleStyle())
                         .onChange(of: researchLoggingEnabled) { _, newValue in
                             ResearchLogger.shared.isEnabled = newValue
                         }
                         .disabled(simulationEnabled)
 
                     if simulationEnabled {
-                        Text("(Disabled during simulation)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
-
-                    Button(action: {
-                        ResearchLogger.shared.openLogsFolder()
-                    }) {
-                        HStack {
-                            Image(systemName: "folder")
-                            Text("Open Logs Folder")
-                        }
+                        Text("(disabled during simulation)")
+                            .font(Type.sans(10, weight: .medium))
+                            .tracking(1.4)
+                            .textCase(.uppercase)
+                            .foregroundColor(Palette.muted)
                     }
                 }
 
-                Text("When enabled, heart rate and synchronization data is logged to CSV files in your iCloud Drive for research analysis.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Text("Heart rate and synchronization data is logged to CSV files in your iCloud Drive for research analysis.")
+                    .font(Type.sans(11))
+                    .foregroundColor(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Divider()
+            Hairline()
+                .padding(.top, 8)
 
             // Action buttons
-            HStack(spacing: 20) {
-                Button("Reset All") {
-                    showResetAlert = true
-                }
-                .foregroundColor(.red)
+            HStack(spacing: 16) {
+                Button("Reset all") { showResetAlert = true }
+                    .buttonStyle(BWTextLinkButtonStyle())
 
                 Spacer()
 
-                Button("Cancel") {
-                    gameStateManager.closeConfiguration()
-                }
+                Button("Cancel") { gameStateManager.closeConfiguration() }
+                    .buttonStyle(BWOutlineButtonStyle(minWidth: 120, height: 42))
 
-                Button("Save & Continue") {
+                Button("Save & continue") {
                     configManager.saveConfig()
                     gameStateManager.closeConfiguration()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(BWPrimaryButtonStyle(minWidth: 200, height: 42))
                 .disabled(!simulationEnabled && configManager.configurationNeeded)
+                .opacity((!simulationEnabled && configManager.configurationNeeded) ? 0.4 : 1)
             }
             .padding()
         }
@@ -246,9 +281,14 @@ struct ConfigurationScreen: View {
             Text("This will remove the device from your paired list.")
         }
         .onAppear {
-            // Auto-scan when configuration screen opens
+            print("🔬 CFG: ConfigurationScreen.onAppear at \(Date()) — bluetoothState=\(configManager.bluetoothState.rawValue) (.poweredOn=\(CBManagerState.poweredOn.rawValue))")
+            print("🔬 CFG:   paired monitors in config: \(configManager.config.monitors.count) — \(configManager.config.monitors.map { "\($0.name)/\($0.uuid)" })")
+            // Surface already-connected straps even if scan can't run yet.
+            configManager.refreshConnectedDevices()
             if configManager.bluetoothState == .poweredOn {
                 configManager.startScan()
+            } else {
+                print("🔬 CFG:   ⚠️ scan NOT triggered on appear — Bluetooth state was \(configManager.bluetoothState.rawValue) (this is one possible cause of false 'Offline')")
             }
         }
     }
@@ -268,51 +308,65 @@ struct DeviceRow: View {
     @ObservedObject var configManager: ConfigurationManager
     var onRemove: () -> Void
 
+    // Derived from the live config so reassignment stays in sync automatically.
+    var isPaired: Bool {
+        configManager.config.monitors.contains { $0.uuid == device.uuid }
+    }
+    var isSelected: Bool {
+        configManager.config.selectedPlayerUUIDs.contains(device.uuid)
+    }
+    var statusText: String {
+        if isSelected { return "Assigned" }
+        if isPaired { return "Paired" }
+        return "Available"
+    }
     var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
-                    .fontWeight(device.isPaired ? .semibold : .regular)
+                    .font(Type.sans(13, weight: isPaired ? .medium : .regular))
+                    .foregroundColor(Palette.ink)
                 Text(device.uuid.uuidString)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .font(Type.sans(10))
+                    .foregroundColor(Palette.muted)
             }
 
             Spacer()
 
-            // Status badge
-            Text(device.statusText)
-                .font(.caption)
+            // Square monochrome status pill — filled ink for assigned, outlined for paired, faint for available.
+            Text(statusText.uppercased())
+                .font(Type.sans(9, weight: .medium))
+                .tracking(1.4)
                 .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(statusColor.opacity(0.2))
-                .foregroundColor(statusColor)
-                .cornerRadius(4)
+                .padding(.vertical, 3)
+                .foregroundColor(isSelected ? Palette.canvas : Palette.ink)
+                .background(isSelected ? Palette.ink : Palette.canvas)
+                .overlay(Rectangle().stroke(Palette.ink, lineWidth: isSelected ? 0 : 1))
 
-            // Action button
-            if device.isPaired {
+            if isPaired {
                 Button(action: onRemove) {
-                    Image(systemName: "minus.circle")
-                        .foregroundColor(.red)
+                    Image(systemName: "minus")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Palette.ink)
+                        .frame(width: 22, height: 22)
+                        .background(Palette.canvas)
+                        .overlay(Rectangle().stroke(Palette.ink, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .help("Remove device")
             } else {
                 Button(action: { configManager.addMonitor(from: device) }) {
-                    Image(systemName: "plus.circle")
-                        .foregroundColor(.green)
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Palette.canvas)
+                        .frame(width: 22, height: 22)
+                        .background(Palette.ink)
                 }
                 .buttonStyle(.plain)
                 .help("Add device")
             }
         }
-        .padding(.vertical, 4)
-    }
-
-    var statusColor: Color {
-        if device.isSelected { return .blue }
-        if device.isPaired { return .green }
-        return .gray
+        .padding(.vertical, 6)
     }
 }
 
@@ -323,32 +377,42 @@ struct OfflineDeviceRow: View {
     @ObservedObject var configManager: ConfigurationManager
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(monitor.name)
+                    .font(Type.sans(13))
+                    .foregroundColor(Palette.ink)
                 Text(monitor.uuid.uuidString)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .font(Type.sans(10))
+                    .foregroundColor(Palette.muted)
             }
 
             Spacer()
 
-            Text("Offline")
-                .font(.caption)
+            // Offline = dashed outline, no fill. Same square geometry as other badges.
+            Text("OFFLINE")
+                .font(Type.sans(9, weight: .medium))
+                .tracking(1.4)
                 .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color.red.opacity(0.2))
-                .foregroundColor(.red)
-                .cornerRadius(4)
+                .padding(.vertical, 3)
+                .foregroundColor(Palette.muted)
+                .overlay(
+                    Rectangle().stroke(style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                        .foregroundColor(Palette.muted)
+                )
 
             Button(action: { configManager.removeMonitor(uuid: monitor.uuid) }) {
-                Image(systemName: "minus.circle")
-                    .foregroundColor(.red)
+                Image(systemName: "minus")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Palette.ink)
+                    .frame(width: 22, height: 22)
+                    .background(Palette.canvas)
+                    .overlay(Rectangle().stroke(Palette.ink, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
-        .padding(.vertical, 4)
-        .opacity(0.7)
+        .padding(.vertical, 6)
+        .opacity(0.6)
     }
 }
 
@@ -359,27 +423,78 @@ struct PlayerSlotPicker: View {
     @ObservedObject var configManager: ConfigurationManager
 
     var body: some View {
-        HStack {
-            Text("Player \(playerNumber):")
-                .frame(width: 80, alignment: .leading)
-
-            Picker("", selection: selectedBinding) {
-                Text("-- Select Device --").tag(nil as UUID?)
-
-                ForEach(availableMonitors, id: \.uuid) { monitor in
-                    HStack {
-                        Text(monitor.name)
-                        if isDeviceAvailable(monitor.uuid) {
-                            Image(systemName: "circle.fill")
-                                .foregroundColor(.green)
-                                .font(.system(size: 8))
+        HStack(spacing: 14) {
+            // Availability indicator: filled = assigned & live, outline = assigned, hollow = unassigned.
+            Circle()
+                .stroke(Palette.ink, lineWidth: 1)
+                .frame(width: 9, height: 9)
+                .overlay(
+                    Group {
+                        if let uuid = selectedBinding.wrappedValue {
+                            Circle()
+                                .fill(Palette.ink)
+                                .frame(width: 5, height: 5)
+                                .opacity(isDeviceAvailable(uuid) ? 1 : 0.4)
                         }
                     }
-                    .tag(monitor.uuid as UUID?)
+                )
+
+            Text("Player \(playerNumber)")
+                .font(Type.sans(11, weight: .medium))
+                .tracking(2)
+                .textCase(.uppercase)
+                .foregroundColor(Palette.ink)
+                .frame(width: 70, alignment: .leading)
+
+            Menu {
+                Button {
+                    updateSelection(nil)
+                } label: {
+                    Text("Unassigned")
                 }
+                Divider()
+                ForEach(availableMonitors, id: \.uuid) { monitor in
+                    Button {
+                        updateSelection(monitor.uuid)
+                    } label: {
+                        if isDeviceAvailable(monitor.uuid) {
+                            Label(monitor.name, systemImage: "circle.fill")
+                        } else {
+                            Text(monitor.name)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(currentLabel)
+                        .font(Type.sans(12, weight: hasSelection ? .medium : .regular))
+                        .foregroundColor(hasSelection ? Palette.ink : Palette.muted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(Palette.ink)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Palette.canvas)
+                .overlay(Rectangle().stroke(Palette.ink, lineWidth: 1))
             }
-            .frame(minWidth: 200)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var hasSelection: Bool { selectedBinding.wrappedValue != nil }
+
+    private var currentLabel: String {
+        guard let uuid = selectedBinding.wrappedValue else { return "Select device" }
+        if let monitor = configManager.config.monitor(for: uuid) {
+            return monitor.name
+        }
+        return "Select device"
     }
 
     var selectedBinding: Binding<UUID?> {
@@ -444,6 +559,47 @@ struct PlayerSlotPicker: View {
 
         configManager.config.selectedPlayerUUIDs = uuids
         configManager.saveConfig()
+    }
+}
+
+// MARK: - Monochrome stepper
+// Replaces SwiftUI's native Stepper so the +/− chrome stays pure black/white.
+
+struct MonochromeStepper: View {
+    let value: Int
+    let range: ClosedRange<Int>
+    let onChange: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            chromeButton(systemImage: "minus", enabled: value > range.lowerBound) {
+                onChange(max(value - 1, range.lowerBound))
+            }
+
+            Text("\(value)")
+                .font(Type.sans(13, weight: .medium))
+                .foregroundColor(Palette.ink)
+                .frame(width: 44, height: 30)
+                .overlay(Rectangle().stroke(Palette.ink, lineWidth: 1))
+
+            chromeButton(systemImage: "plus", enabled: value < range.upperBound) {
+                onChange(min(value + 1, range.upperBound))
+            }
+        }
+    }
+
+    private func chromeButton(systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Palette.ink)
+                .frame(width: 30, height: 30)
+                .background(Palette.canvas)
+                .overlay(Rectangle().stroke(Palette.ink, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
     }
 }
 

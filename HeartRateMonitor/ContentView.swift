@@ -31,6 +31,12 @@ struct ContentView: View {
                 .disabled(gameStateManager.currentState == .playing || gameStateManager.currentState == .paused)
             }
         }
+        // Force light mode app-wide so the window titlebar / traffic-lights area
+        // renders white across all screens (matches the configuration screen).
+        // Our content already uses explicit Palette colors so nothing else shifts.
+        .preferredColorScheme(.light)
+        // Suppress the window title text — the app already brands itself inside.
+        .navigationTitle("")
         .onAppear {
             // Auto-open configuration if needed
             if configManager.configurationNeeded {

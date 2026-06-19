@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>beat_piece · OSC monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.10.0/p5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
+<style>
+  :root {
+    --bg:      #f4f1ea;
+    --ink:     #1c1a18;
+    --muted:   #7a736b;
+    --line:    #d8d1c5;
+    --card:    #fbf9f4;
+    --accent:  #b3613a;
+    --good:    #4f7a4b;
+    --bad:     #a13a3a;
+    --serif:   "Iowan Old Style", "Palatino Linotype", "Palatino", Georgia, serif;
+    --sans:    -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 32px 64px; }
+
+  header.site {
+    display: flex; align-items: baseline; gap: 24px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 18px; margin-bottom: 36px; flex-wrap: wrap;
+  }
+  header.site h1 { font-family: var(--serif); font-weight: 400; font-size: 28px; letter-spacing: -0.01em; margin: 0; }
+  header.site h1 em { font-style: italic; color: var(--accent); }
+  header.site nav { font-size: 13px; color: var(--muted); display: flex; gap: 14px; margin-left: auto; align-items: center; }
+  header.site nav .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  header.site nav .dot.good { background: var(--good); }
+  header.site nav .dot.bad  { background: var(--bad); }
+  header.site nav .sep { color: var(--line); }
+
+  .controls {
+    display: flex; align-items: center; gap: 18px;
+    padding: 12px 16px; margin-bottom: 32px;
+    border: 1px solid var(--line); border-radius: 4px;
+    background: var(--card); font-size: 13px; flex-wrap: wrap;
+  }
+  button.btn { font: inherit; font-family: var(--sans); padding: 6px 14px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); border-radius: 2px; cursor: pointer; letter-spacing: 0.02em; }
+  button.btn:hover { background: #000; }
+  button.btn:disabled { background: #888; border-color: #888; cursor: default; }
+  button.btn.ghost { background: transparent; color: var(--ink); }
+  button.btn.ghost:hover { background: var(--bg); }
+  button.btn.ghost:disabled { color: #aaa; }
+  button.btn.stop { background: var(--bad); border-color: var(--bad); }
+  button.btn.stop:hover { background: #8a2f2f; }
+  .controls label { color: var(--muted); display: inline-flex; align-items: center; gap: 8px; }
+  .controls input[type=range] { accent-color: var(--accent); width: 110px; }
+
+  section.players { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 48px; }
+  @media (max-width: 720px) { section.players { grid-template-columns: repeat(2, 1fr); } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 22px 20px 24px; position: relative; overflow: hidden; transition: transform 120ms ease-out; }
+  .card .label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; display: flex; justify-content: space-between; gap: 8px; }
+  .card .label .note { color: var(--accent); font-family: var(--mono); letter-spacing: 0.06em; }
+  .card .bpm { font-family: var(--serif); font-size: 70px; line-height: 1; font-weight: 400; letter-spacing: -0.02em; text-align: center; margin: 8px 0 10px; color: var(--ink); transition: color 600ms ease; }
+  .card.idle .bpm { color: var(--line); }
+  .card .unit { font-family: var(--sans); font-size: 13px; color: var(--muted); margin-left: 5px; letter-spacing: 0.04em; }
+  .card .meta { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 12px; }
+  .card .meta .addr { font-family: var(--mono); }
+  .card .pulse { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%) scale(0); opacity: 0; pointer-events: none; }
+  .card .pulse.fire { animation: pulse 900ms ease-out forwards; }
+  @keyframes pulse {
+    0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.55; }
+    100% { transform: translate(-50%, -50%) scale(7.5); opacity: 0; }
+  }
+
+  section.log h2, section.fx h2 { font-family: var(--serif); font-weight: 400; font-size: 18px; margin: 0 0 12px; letter-spacing: -0.005em; }
+  .log-box { font-family: var(--mono); font-size: 12px; line-height: 1.6; background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 12px 16px; height: 200px; overflow-y: auto; }
+  .log-box .row { padding: 1px 0; white-space: nowrap; }
+  .log-box .ts { color: var(--muted); }
+  .log-box .addr { color: var(--ink); }
+  .log-box .val { color: var(--accent); }
+  .log-box .from { color: var(--muted); }
+
+  /* ─────────── Sound design — simple boxes with sliders ─────────── */
+  section.fx { margin-top: 48px; }
+  .fx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .fx-block { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 16px 18px 18px; }
+  .fx-block h3 {
+    font-family: var(--serif); font-style: italic; font-weight: 400;
+    font-size: 15px; color: var(--ink);
+    margin: 0 0 14px;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  }
+  .fx-block h3 .reset {
+    font-family: var(--sans); font-style: normal;
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); cursor: pointer;
+    background: none; border: 0; padding: 0;
+  }
+  .fx-block h3 .reset:hover { text-decoration: underline; }
+
+  .fx-row { display: flex; align-items: center; gap: 12px; padding: 5px 0; font-size: 12px; color: var(--ink); }
+  .fx-row label { color: var(--muted); min-width: 60px; }
+  .fx-row input[type=range] { accent-color: var(--accent); flex: 1; min-width: 80px; }
+  .fx-row select {
+    font: inherit; font-family: var(--mono); font-size: 12px;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 3px;
+    padding: 3px 8px;
+    flex: 1; min-width: 0;
+  }
+  .fx-row .val {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted); min-width: 60px; text-align: right;
+    white-space: nowrap;
+  }
+
+  .voices-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+  .voice-row { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; color: var(--ink); }
+  .voice-row .pid { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.08em; flex-shrink: 0; }
+  .voice-row .pid .note { color: var(--accent); margin-left: 4px; }
+  .voice-row select {
+    flex: 1; min-width: 0;
+    font: inherit; font-family: var(--sans); font-size: 12px;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 3px;
+    padding: 4px 6px;
+  }
+
+  footer.note { margin-top: 28px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; font-style: italic; }
+  footer.note code { font-family: var(--mono); font-style: normal; color: var(--ink); background: var(--card); padding: 1px 5px; border-radius: 2px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <h1>beat_piece <em>— osc monitor</em></h1>
+    <nav>
+      <span><span id="dot" class="dot bad"></span><span id="status">connecting…</span></span>
+      <span class="sep">·</span>
+      <span>udp 8000 → ws</span>
+    </nav>
+  </header>
+
+  <div class="controls">
+    <button id="audioBtn" class="btn">▶ Start audio</button>
+    <button id="stopBtn"  class="btn stop" disabled>■ Stop sound</button>
+    <button id="testBtn"  class="btn ghost" disabled>Test arpeggio</button>
+    <label>master <input id="masterVol" type="range" min="-60" max="0" value="-8"></label>
+    <label>drone  <input id="droneVol"  type="range" min="-60" max="0" value="-14"></label>
+    <label>beats  <input id="beatVol"   type="range" min="-60" max="0" value="-6"></label>
+  </div>
+
+  <section class="players"></section>
+
+  <section class="log">
+    <h2>Raw OSC</h2>
+    <div id="log" class="log-box"></div>
+  </section>
+
+  <section class="fx">
+    <h2>Sound design</h2>
+    <div class="fx-grid">
+
+      <div class="fx-block">
+        <h3>voices <button class="reset" data-reset="synths">reset</button></h3>
+        <div class="voices-grid" id="synthGrid"></div>
+      </div>
+
+      <div class="fx-block">
+        <h3>filter <button class="reset" data-reset="filter">reset</button></h3>
+        <div class="fx-row">
+          <label>type</label>
+          <select id="filterType">
+            <option value="lowpass">lowpass</option>
+            <option value="highpass">highpass</option>
+            <option value="bandpass">bandpass</option>
+          </select>
+        </div>
+        <div class="fx-row">
+          <label>cutoff</label>
+          <input id="filterFreq" type="range" min="0" max="1000" value="650">
+          <span class="val" id="filterFreqVal">—</span>
+        </div>
+        <div class="fx-row">
+          <label>resonance</label>
+          <input id="filterQ" type="range" min="0" max="20" step="0.1" value="0.3">
+          <span class="val" id="filterQVal">—</span>
+        </div>
+      </div>
+
+      <div class="fx-block">
+        <h3>reverb <button class="reset" data-reset="reverb">reset</button></h3>
+        <div class="fx-row">
+          <label>size</label>
+          <input id="reverbSize" type="range" min="0" max="1" step="0.01" value="0.85">
+          <span class="val" id="reverbSizeVal">—</span>
+        </div>
+        <div class="fx-row">
+          <label>damp</label>
+          <input id="reverbDamp" type="range" min="200" max="8000" step="100" value="3000">
+          <span class="val" id="reverbDampVal">—</span>
+        </div>
+        <div class="fx-row">
+          <label>wet</label>
+          <input id="reverbWet" type="range" min="0" max="1" step="0.01" value="0.55">
+          <span class="val" id="reverbWetVal">—</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="note">
+    Each player has one pentatonic note. <code>/player/N/bpm</code> sets the rate; <code>/player/N/beat</code> retimes when present. Patch auto-saves.
+  </footer>
+</div>
+
+<script>
+// ────────────────────────── Players ──────────────────────────
+const PLAYER_CONFIG = {
+  1: { note: 'C2', label: 'bass' },
+  2: { note: 'G2', label: 'sub'  },
+  3: { note: 'D3', label: 'low'  },
+  4: { note: 'A3', label: 'mid'  },
+  5: { note: 'E4', label: 'high' },
+  6: { note: 'C5', label: 'top'  },
+};
+const PLAYER_IDS = Object.keys(PLAYER_CONFIG).map(n => parseInt(n, 10));
+
+const playerState = new Map();
+const metronomes  = new Map();
+const events = [];
+const FRESH_MS = 8000;
+const METRONOME_TIMEOUT_MS = 90_000;
+
+function renderCards() {
+  const c = document.querySelector('section.players');
+  c.innerHTML = '';
+  for (const id of PLAYER_IDS) {
+    const cfg = PLAYER_CONFIG[id];
+    const card = document.createElement('article');
+    card.className = 'card idle';
+    card.dataset.pid = id;
+    card.innerHTML = `
+      <div class="label"><span>Player ${id} · ${cfg.label}</span><span class="note">${cfg.note}</span></div>
+      <div class="bpm">—<span class="unit">bpm</span></div>
+      <div class="meta"><span class="addr">/player/${id}/bpm</span><span class="ago">waiting</span></div>
+      <span class="pulse"></span>
+    `;
+    c.appendChild(card);
+  }
+}
+renderCards();
+function updateCardBPM(id, bpm) {
+  const card = document.querySelector(`.card[data-pid="${id}"]`);
+  if (!card) return;
+  card.classList.remove('idle');
+  card.querySelector('.bpm').innerHTML = `${bpm}<span class="unit">bpm</span>`;
+}
+function firePulseVisual(id) {
+  const card = document.querySelector(`.card[data-pid="${id}"]`);
+  if (!card) return;
+  const pulse = card.querySelector('.pulse');
+  pulse.classList.remove('fire'); void pulse.offsetWidth; pulse.classList.add('fire');
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, s] of playerState) {
+    const card = document.querySelector(`.card[data-pid="${id}"]`);
+    if (!card) continue;
+    const ago = now - s.lastT;
+    card.querySelector('.ago').textContent = ago < 1200 ? 'just now' : `${(ago / 1000) | 0}s ago`;
+    if (ago > FRESH_MS) card.classList.add('idle'); else card.classList.remove('idle');
+  }
+}, 250);
+
+// ────────────────────────── WebSocket ──────────────────────────
+let ws;
+function connect() {
+  ws = new WebSocket(`ws://${location.host}`);
+  ws.onopen    = () => setStatus('connected', 'good');
+  ws.onclose   = () => { setStatus('disconnected — retrying', 'bad'); setTimeout(connect, 1000); };
+  ws.onerror   = () => setStatus('error', 'bad');
+  ws.onmessage = (m) => handleEvent(JSON.parse(m.data));
+}
+connect();
+function setStatus(text, cls) { document.getElementById('status').textContent = text; document.getElementById('dot').className = `dot ${cls}`; }
+function handleEvent(ev) {
+  events.unshift(ev);
+  if (events.length > 200) events.length = 200;
+  renderLog();
+  const beatMatch = ev.address.match(/^\/player\/(\d+)\/beat$/);
+  if (beatMatch) { onBeat(parseInt(beatMatch[1], 10), ev.args[0]); return; }
+  const bpmMatch = ev.address.match(/^\/player\/(\d+)\/bpm$/);
+  if (bpmMatch)  { onBPM(parseInt(bpmMatch[1], 10),  ev.args[0]); return; }
+}
+function renderLog() {
+  const log = document.getElementById('log');
+  log.innerHTML = events.map(e => {
+    const ts = new Date(e.t).toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(e.t % 1000).padStart(3, '0');
+    const args = (e.args ?? []).join(', ');
+    return `<div class="row"><span class="ts">${ts}</span> <span class="addr">${esc(e.address)}</span> = <span class="val">${esc(args)}</span> <span class="from">${esc(e.from)}</span></div>`;
+  }).join('');
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+// ────────────────────────── Beat scheduling ──────────────────────────
+function onBPM(id, bpm) {
+  if (!PLAYER_CONFIG[id]) return;
+  const prev = playerState.get(id) ?? {};
+  playerState.set(id, { ...prev, bpm, lastT: Date.now() });
+  updateCardBPM(id, bpm);
+  if (!metronomes.has(id)) scheduleNextTick(id);
+}
+function onBeat(id, maybeBpm) {
+  if (!PLAYER_CONFIG[id]) return;
+  const prev = playerState.get(id) ?? {};
+  const bpm = maybeBpm > 0 ? maybeBpm : prev.bpm;
+  playerState.set(id, { ...prev, bpm, lastT: Date.now() });
+  if (bpm) updateCardBPM(id, bpm);
+  fireBeat(id);
+  if (metronomes.has(id)) { clearTimeout(metronomes.get(id)); metronomes.delete(id); }
+  scheduleNextTick(id);
+}
+function scheduleNextTick(id) {
+  const state = playerState.get(id);
+  if (!state || !state.bpm) return;
+  const h = setTimeout(() => onMetronomeTick(id), 60000 / state.bpm);
+  metronomes.set(id, h);
+}
+function onMetronomeTick(id) {
+  metronomes.delete(id);
+  const state = playerState.get(id);
+  if (!state || !state.bpm) return;
+  if (Date.now() - state.lastT > METRONOME_TIMEOUT_MS) return;
+  fireBeat(id);
+  scheduleNextTick(id);
+}
+function fireBeat(id) { firePulseVisual(id); fireBeatAudio(id); }
+
+// ────────────────────────── Synth presets (soft, low-CPU only) ──────────────────────────
+const SYNTH_PRESETS = {
+  'sine-pad': { label: 'Sine pad',     build: () => new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'sine'     }, envelope: { attack: 0.012, decay: 1.0, sustain: 0, release: 3.2 } }) },
+  'tri-pad':  { label: 'Triangle pad', build: () => new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'triangle' }, envelope: { attack: 0.015, decay: 0.9, sustain: 0, release: 3.0 } }) },
+  'am-warm':  { label: 'AM warm',      build: () => new Tone.PolySynth(Tone.AMSynth, { harmonicity: 1.5, oscillator: { type: 'sine' }, envelope: { attack: 0.03, decay: 1.0, sustain: 0, release: 2.8 } }) },
+  'fm-bell':  { label: 'FM bell',      build: () => new Tone.PolySynth(Tone.FMSynth, { harmonicity: 3, modulationIndex: 12, envelope: { attack: 0.005, decay: 1.5, sustain: 0, release: 3.5 }, modulationEnvelope: { attack: 0.005, decay: 0.5, sustain: 0, release: 1.0 } }) },
+};
+const DEFAULT_PER_PLAYER_PRESET = { 1: 'sine-pad', 2: 'sine-pad', 3: 'tri-pad', 4: 'tri-pad', 5: 'sine-pad', 6: 'sine-pad' };
+const playerPresetChoice = { ...DEFAULT_PER_PLAYER_PRESET };
+function playerBaseVolume(id) { return -2 - (id * 1.5); }
+
+// ────────────────────────── Audio nodes ──────────────────────────
+let audioStarted = false;
+let masterVol, beatBus, droneBus;
+let filterNode, reverbNode;
+const playerVoices = {};
+
+function applyFxParam(id, v) {
+  if (!audioStarted) return;
+  switch (id) {
+    case 'filterType': filterNode.type = v; break;
+    case 'filterFreq': filterNode.frequency.rampTo(filterFreqFromSlider(v), 0.05); break;
+    case 'filterQ':    filterNode.Q.rampTo(v, 0.05); break;
+    case 'reverbSize': reverbNode.roomSize.rampTo(v, 0.05); break;
+    case 'reverbDamp': reverbNode.dampening.rampTo(v, 0.05); break;
+    case 'reverbWet':  reverbNode.wet.rampTo(v, 0.05); break;
+  }
+}
+
+const FX_SLIDERS = {
+  filterFreq: { fmt: v => fmtHz(filterFreqFromSlider(v)), default: 650 },
+  filterQ:    { fmt: v => v.toFixed(1), default: 0.3 },
+  reverbSize: { fmt: v => v.toFixed(2), default: 0.85 },
+  reverbDamp: { fmt: v => fmtHz(v), default: 3000 },
+  reverbWet:  { fmt: v => fmtPct(v), default: 0.55 },
+};
+const FX_SELECTORS = { filterType: { default: 'lowpass' } };
+
+function fmtHz(v) { return v >= 1000 ? `${(v/1000).toFixed(1)} kHz` : `${Math.round(v)} Hz`; }
+function fmtPct(v) { return `${Math.round(v * 100)}%`; }
+function filterFreqFromSlider(v) { return 80 * Math.pow(100, v / 1000); }
+
+function getVal(id) { return parseFloat(document.getElementById(id).value); }
+function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
+
+function paintFxLabel(id) {
+  const def = FX_SLIDERS[id];
+  if (!def) return;
+  setText(`${id}Val`, def.fmt(getVal(id)));
+}
+function paintAllFxLabels() { for (const id of Object.keys(FX_SLIDERS)) paintFxLabel(id); }
+
+function bindFxControls() {
+  for (const id of Object.keys(FX_SLIDERS)) {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => { paintFxLabel(id); applyFxParam(id, getVal(id)); savePatchSoon(); });
+  }
+  for (const id of Object.keys(FX_SELECTORS)) {
+    const el = document.getElementById(id);
+    el.addEventListener('change', () => { applyFxParam(id, el.value); savePatchSoon(); });
+  }
+}
+
+async function startAudio() {
+  if (audioStarted) return;
+  try { await Tone.start(); }
+  catch (e) { alert('Audio start failed: ' + e.message); console.error(e); return; }
+  audioStarted = true;
+  console.log('Audio context:', Tone.getContext().state);
+
+  document.getElementById('audioBtn').textContent = '♪ Audio on';
+  document.getElementById('audioBtn').disabled = true;
+  document.getElementById('stopBtn').disabled = false;
+  document.getElementById('testBtn').disabled = false;
+
+  // Minimal chain: synths/drone → filter → reverb → master → destination
+  masterVol  = new Tone.Volume(getVal('masterVol')).toDestination();
+  reverbNode = new Tone.Freeverb({ roomSize: getVal('reverbSize'), dampening: getVal('reverbDamp'), wet: getVal('reverbWet') }).connect(masterVol);
+  filterNode = new Tone.Filter({ type: document.getElementById('filterType').value, frequency: filterFreqFromSlider(getVal('filterFreq')), Q: getVal('filterQ') }).connect(reverbNode);
+
+  beatBus  = new Tone.Volume(getVal('beatVol' )).connect(filterNode);
+  droneBus = new Tone.Volume(getVal('droneVol')).connect(filterNode);
+
+  // Drone — single soft AMSynth + slow amplitude LFO.
+  const drone = new Tone.AMSynth({
+    harmonicity: 1.5,
+    oscillator: { type: 'sine' },
+    modulation: { type: 'sine' },
+    envelope:           { attack: 2.0, decay: 0, sustain: 1, release: 6 },
+    modulationEnvelope: { attack: 1.5, decay: 0, sustain: 1, release: 5 },
+  }).connect(droneBus);
+  drone.triggerAttack('C2');
+  new Tone.LFO({ frequency: 0.05, min: -4, max: 0 }).connect(drone.volume).start();
+
+  for (const id of PLAYER_IDS) buildVoice(id);
+
+  document.getElementById('masterVol').addEventListener('input', e => masterVol.volume.rampTo(parseFloat(e.target.value), 0.05));
+  document.getElementById('droneVol' ).addEventListener('input', e => droneBus .volume.rampTo(parseFloat(e.target.value), 0.05));
+  document.getElementById('beatVol'  ).addEventListener('input', e => beatBus  .volume.rampTo(parseFloat(e.target.value), 0.05));
+
+  playTestArpeggio(0.18);
+}
+
+function buildVoice(id) {
+  const presetKey = playerPresetChoice[id];
+  const preset = SYNTH_PRESETS[presetKey] ?? SYNTH_PRESETS['sine-pad'];
+  const gain = playerVoices[id]?.gain ?? new Tone.Gain(1).connect(beatBus);
+  if (playerVoices[id]?.synth) playerVoices[id].synth.dispose();
+  const synth = preset.build();
+  if (synth.volume) synth.volume.value = playerBaseVolume(id);
+  synth.connect(gain);
+  playerVoices[id] = { synth, gain, presetKey };
+}
+function fireBeatAudio(id) {
+  if (!audioStarted || muted) return;
+  const voice = playerVoices[id];
+  if (!voice) return;
+  try { voice.synth.triggerAttackRelease(PLAYER_CONFIG[id].note, '8n'); }
+  catch (e) { console.warn('voice trigger failed:', voice.presetKey, e.message); }
+}
+function playTestArpeggio(stepSec = 0.22) {
+  if (!audioStarted) return;
+  const t0 = Tone.now();
+  PLAYER_IDS.forEach((id, i) => {
+    const voice = playerVoices[id];
+    if (voice) voice.synth.triggerAttackRelease(PLAYER_CONFIG[id].note, '8n', t0 + i * stepSec);
+  });
+}
+
+// ────────────────────────── Stop / resume ──────────────────────────
+let muted = false;
+function setMuted(yes) {
+  if (!audioStarted) return;
+  muted = yes;
+  if (masterVol) masterVol.mute = yes;
+  const stop = document.getElementById('stopBtn');
+  stop.textContent = yes ? '▶ Resume sound' : '■ Stop sound';
+  stop.classList.toggle('stop', !yes);
+  if (yes) {
+    for (const [, h] of metronomes) clearTimeout(h);
+    metronomes.clear();
+  } else {
+    for (const id of PLAYER_IDS) {
+      const s = playerState.get(id);
+      if (s && s.bpm) scheduleNextTick(id);
+    }
+  }
+}
+
+// ────────────────────────── Voices picker ──────────────────────────
+function renderSynthPicker() {
+  const grid = document.getElementById('synthGrid');
+  grid.innerHTML = '';
+  for (const id of PLAYER_IDS) {
+    const row = document.createElement('div');
+    row.className = 'voice-row';
+    row.innerHTML = `
+      <span class="pid">P${id}<span class="note">${PLAYER_CONFIG[id].note}</span></span>
+      <select data-pid="${id}">
+        ${Object.entries(SYNTH_PRESETS).map(([k, v]) => `<option value="${k}" ${playerPresetChoice[id] === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+      </select>
+    `;
+    grid.appendChild(row);
+    row.querySelector('select').addEventListener('change', (e) => {
+      const pid = parseInt(e.target.dataset.pid, 10);
+      playerPresetChoice[pid] = e.target.value;
+      if (audioStarted) buildVoice(pid);
+      savePatchSoon();
+    });
+  }
+}
+
+// ────────────────────────── Patch persistence ──────────────────────────
+const PATCH_KEY = 'beat_piece_osc_monitor_patch_v1';
+
+function snapshotPatch() {
+  const sliders = {};
+  for (const id of ['masterVol','droneVol','beatVol', ...Object.keys(FX_SLIDERS)]) {
+    const el = document.getElementById(id);
+    if (el) sliders[id] = parseFloat(el.value);
+  }
+  const selectors = {};
+  for (const id of Object.keys(FX_SELECTORS)) {
+    const el = document.getElementById(id);
+    if (el) selectors[id] = el.value;
+  }
+  return { v: 4, sliders, selectors, synths: { ...playerPresetChoice } };
+}
+function applyPatch(p) {
+  if (!p) return;
+  for (const [id, v] of Object.entries(p.sliders ?? {})) {
+    const el = document.getElementById(id);
+    if (el && Number.isFinite(v)) el.value = v;
+  }
+  const sels = p.selectors ?? (p.filterType ? { filterType: p.filterType } : {});
+  for (const [id, v] of Object.entries(sels)) {
+    const el = document.getElementById(id);
+    if (el) el.value = v;
+  }
+  if (p.synths) {
+    for (const [id, key] of Object.entries(p.synths)) {
+      const pid = parseInt(id, 10);
+      if (PLAYER_CONFIG[pid] && SYNTH_PRESETS[key]) playerPresetChoice[pid] = key;
+    }
+  }
+}
+function loadPatch() { try { return JSON.parse(localStorage.getItem(PATCH_KEY)); } catch { return null; } }
+function savePatch() {
+  try { localStorage.setItem(PATCH_KEY, JSON.stringify(snapshotPatch())); }
+  catch (e) { console.warn('Patch save failed:', e); }
+}
+let _saveTimer;
+function savePatchSoon() { clearTimeout(_saveTimer); _saveTimer = setTimeout(savePatch, 300); }
+
+// ────────────────────────── Resets ──────────────────────────
+function attachResetButtons() {
+  document.querySelectorAll('[data-reset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.reset;
+      if (key === 'synths') {
+        Object.assign(playerPresetChoice, DEFAULT_PER_PLAYER_PRESET);
+        renderSynthPicker();
+        if (audioStarted) PLAYER_IDS.forEach(buildVoice);
+        savePatchSoon();
+        return;
+      }
+      if (key === 'filter') {
+        document.getElementById('filterType').value = FX_SELECTORS.filterType.default;
+        document.getElementById('filterType').dispatchEvent(new Event('change'));
+        document.getElementById('filterFreq').value = FX_SLIDERS.filterFreq.default;
+        document.getElementById('filterFreq').dispatchEvent(new Event('input'));
+        document.getElementById('filterQ').value = FX_SLIDERS.filterQ.default;
+        document.getElementById('filterQ').dispatchEvent(new Event('input'));
+      }
+      if (key === 'reverb') {
+        document.getElementById('reverbSize').value = FX_SLIDERS.reverbSize.default;
+        document.getElementById('reverbSize').dispatchEvent(new Event('input'));
+        document.getElementById('reverbDamp').value = FX_SLIDERS.reverbDamp.default;
+        document.getElementById('reverbDamp').dispatchEvent(new Event('input'));
+        document.getElementById('reverbWet').value = FX_SLIDERS.reverbWet.default;
+        document.getElementById('reverbWet').dispatchEvent(new Event('input'));
+      }
+    });
+  });
+}
+
+// ────────────────────────── Bootstrap ──────────────────────────
+renderSynthPicker();
+applyPatch(loadPatch());
+paintAllFxLabels();
+bindFxControls();
+attachResetButtons();
+['masterVol', 'droneVol', 'beatVol'].forEach(id => {
+  document.getElementById(id).addEventListener('input', savePatchSoon);
+});
+
+document.getElementById('audioBtn').addEventListener('click', () => startAudio());
+document.getElementById('stopBtn' ).addEventListener('click', () => setMuted(!muted));
+document.getElementById('testBtn' ).addEventListener('click', () => playTestArpeggio());
+</script>
+</body>
+</html>
