@@ -3,6 +3,12 @@ import SwiftUI
 struct StartScreen: View {
     @ObservedObject var gameStateManager: GameStateManager
 
+    @State private var soundDesignerVisible = false
+
+    private var miniFreakEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "EnableMiniFreakEngine")
+    }
+
     var body: some View {
         ZStack {
             Palette.canvas.ignoresSafeArea()
@@ -20,6 +26,9 @@ struct StartScreen: View {
             .padding(.horizontal, 48)
             .padding(.top, 48)
             .padding(.bottom, 32)
+        }
+        .sheet(isPresented: $soundDesignerVisible) {
+            SoundDesignerScreen()
         }
     }
 
@@ -104,18 +113,39 @@ struct StartScreen: View {
 
     // MARK: - Bottom CTA
 
-    // Matches GameScreen's pinned controls row — same vertical position so
-    // the only thing that changes Start → Game is the button label.
+    // Designer-side utilities sit on the left (open the plugin UI, open the
+    // sound-designer sheet) so the operator can audition voicings while
+    // straps are firing on the cards above. Primary CTA stays on the right.
     private var bottomSection: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
+            Button {
+                AUEngine.shared.openPluginUI()
+            } label: {
+                Text("Open plugin")
+            }
+            .buttonStyle(BWOutlineButtonStyle(minWidth: 140, height: 36))
+            .disabled(!miniFreakEnabled)
+            .opacity(miniFreakEnabled ? 1 : 0.35)
+
+            Button {
+                soundDesignerVisible = true
+            } label: {
+                Text("Sound designer")
+            }
+            .buttonStyle(BWOutlineButtonStyle(minWidth: 160, height: 36))
+            .disabled(!miniFreakEnabled)
+            .opacity(miniFreakEnabled ? 1 : 0.35)
+
+            Spacer()
+
             Button("Begin experience") {
                 gameStateManager.startGame()
             }
             .buttonStyle(BWPrimaryButtonStyle(minWidth: 260, height: 44))
+            .opacity(gameStateManager.currentState == .ready ? 1 : 0)
+            .allowsHitTesting(gameStateManager.currentState == .ready)
+            .animation(.easeOut(duration: 0.35), value: gameStateManager.currentState)
         }
-        .opacity(gameStateManager.currentState == .ready ? 1 : 0)
-        .allowsHitTesting(gameStateManager.currentState == .ready)
-        .animation(.easeOut(duration: 0.35), value: gameStateManager.currentState)
     }
 
     // MARK: - Layout

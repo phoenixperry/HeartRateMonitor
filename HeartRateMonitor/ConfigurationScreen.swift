@@ -10,6 +10,7 @@ struct ConfigurationScreen: View {
     @State private var researchLoggingEnabled = ResearchLogger.shared.isEnabled
     @State private var simulationEnabled = UserDefaults.standard.bool(forKey: "SimulateHeartRateMonitors")
     @State private var miniFreakEnabled = UserDefaults.standard.bool(forKey: "EnableMiniFreakEngine")
+    @State private var soundDesignerVisible = false
 
     var body: some View {
         // GeometryReader gives us a width-driven scale factor (clamped 0.75–1.6
@@ -231,6 +232,14 @@ struct ConfigurationScreen: View {
                             }
                         Spacer()
                         Button {
+                            soundDesignerVisible = true
+                        } label: {
+                            Text("Sound designer")
+                        }
+                        .buttonStyle(BWOutlineButtonStyle(minWidth: 160, height: 32))
+                        .disabled(!miniFreakEnabled)
+                        .opacity(miniFreakEnabled ? 1 : 0.4)
+                        Button {
                             AUEngine.shared.openPluginUI()
                         } label: {
                             Text("Open plugin")
@@ -330,6 +339,9 @@ struct ConfigurationScreen: View {
             // the per-player HeartRateManager connections claim the airwaves
             // during gameplay without interference.
             configManager.stopLivenessProbing()
+        }
+        .sheet(isPresented: $soundDesignerVisible) {
+            SoundDesignerScreen()
         }
     }
 

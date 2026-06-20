@@ -46,21 +46,20 @@ final class AUEngine {
         UserDefaults.standard.bool(forKey: "EnableMiniFreakEngine")
     }
 
-    /// Per-player MIDI note. C major triad spread across two octaves
-    /// starting from middle C — gives six voices that always consonate.
-    /// Player 1 = C4 (middle C) … Player 6 = G5.
-    private let notesByPlayer: [Int: UInt8] = [
-        1: 60, // C4 (middle C)
-        2: 64, // E4
-        3: 67, // G4
-        4: 72, // C5
-        5: 76, // E5
-        6: 79, // G5
-    ]
-
-    /// How long the engine holds a note before sending note-off.
-    private let noteDuration: TimeInterval = 0.6
-    private let velocity: UInt8 = 96
+    // Per-player MIDI note, velocity and note duration all come from the
+    // active SoundPreset via SoundDesignManager. Lets the Sound Designer
+    // screen swap voicings live (different scales, different per-player
+    // assignments) while the operator auditions sounds with the MiniFreak
+    // plugin open.
+    private var notesByPlayer: [Int: UInt8] {
+        SoundDesignManager.shared.active.notesByPlayer
+    }
+    private var noteDuration: TimeInterval {
+        SoundDesignManager.shared.active.noteDuration
+    }
+    private var velocity: UInt8 {
+        SoundDesignManager.shared.active.velocity
+    }
     private let midiChannel: UInt8 = 0
 
     /// MiniFreak V component description (Arturia AUv2 music device).
@@ -113,6 +112,27 @@ final class AUEngine {
             guard !startFailed else { return }
         }
         sendNoteOn(player: player)
+    }
+
+    /// Fire an arbitrary MIDI note now, ignoring the per-player map.
+    /// Used by the Sound Designer screen so each player row's "test"
+    /// button can audition exactly what that player will play.
+    /// Bootstraps the engine if needed.
+    func playTestNote(midi: UInt8) {
+        guard isEnabled, !startFailed else { return }
+        if !hasStarted {
+            startEngine()
+            guard !startFailed else { return }
+        }
+        guard let mi = instrument else { return }
+        let dur = noteDuration
+        let vel = velocity
+        let ch = midiChannel
+        mi.sendMIDIEvent(0x90 | ch, data1: midi, data2: vel)
+        DispatchQueue.main.asyncAfter(deadline: .now() + dur) { [weak self] in
+            guard let self = self, let mi = self.instrument else { return }
+            mi.sendMIDIEvent(0x80 | ch, data1: midi, data2: 0)
+        }
     }
 
     /// Open the MiniFreak V plugin's native UI in a floating window. From there
