@@ -15,22 +15,9 @@
 		C6E42C892DB2BA57008697AB /* HeartRateMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HeartRateMonitor.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		C6583F112D78B6C6006A25CB /* Exceptions for "HeartRateMonitor" folder in "HeartRateMonitor" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				info.plist,
-			);
-			target = C6583EED2D78A325006A25CB /* HeartRateMonitor */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C6583EF02D78A325006A25CB /* HeartRateMonitor */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				C6583F112D78B6C6006A25CB /* Exceptions for "HeartRateMonitor" folder in "HeartRateMonitor" target */,
-			);
 			path = HeartRateMonitor;
 			sourceTree = "<group>";
 		};

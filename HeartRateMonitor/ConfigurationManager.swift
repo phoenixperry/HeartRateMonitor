@@ -16,6 +16,37 @@ class ConfigurationManager: NSObject, ObservableObject {
     private let configURL: URL
     private var scanTimer: Timer?
 
+    /// Background prober that briefly connects to each paired monitor to see
+    /// whether it's actually streaming non-zero BPM (i.e. on a person), as
+    /// opposed to just sitting on a charger and advertising BLE. Drives the
+    /// black "live" dot in the Player Assignments dropdown.
+    let livenessProber = MonitorLivenessProber()
+    private var liveSubscription: AnyCancellable?
+    /// Bumped every time the prober's live set changes so SwiftUI views that
+    /// read `isDeviceLive(_:)` recompute. Cheaper than republishing each UUID.
+    @Published private(set) var livenessTick: Int = 0
+
+    /// True if the given monitor has reported a non-zero BPM during the most
+    /// recent probe — i.e. it is currently being worn / measuring.
+    func isDeviceLive(_ uuid: UUID) -> Bool {
+        livenessProber.liveUUIDs.contains(uuid)
+    }
+
+    /// Begin live-probing the currently paired monitors. Call from the
+    /// Configuration screen's onAppear so probing only runs while the user
+    /// is actively choosing assignments.
+    func startLivenessProbing() {
+        let uuids = config.monitors.map { $0.uuid }
+        livenessProber.start(monitoringUUIDs: uuids)
+    }
+
+    /// Cancel any in-flight probes. Call from the Configuration screen's
+    /// onDisappear so we don't fight with per-player connections during
+    /// gameplay.
+    func stopLivenessProbing() {
+        livenessProber.stop()
+    }
+
     // MARK: - Computed Properties
 
     /// Returns true if configuration screen should be shown
@@ -89,6 +120,14 @@ class ConfigurationManager: NSObject, ObservableObject {
 
         // Initialize Bluetooth
         centralManager = CBCentralManager(delegate: self, queue: nil)
+
+        // Republish prober's liveness changes through this object so SwiftUI
+        // views observing `ConfigurationManager` re-render when the set flips.
+        liveSubscription = livenessProber.$liveUUIDs
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.livenessTick &+= 1
+            }
     }
 
     // MARK: - Config Persistence

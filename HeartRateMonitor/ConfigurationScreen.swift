@@ -304,6 +304,16 @@ struct ConfigurationScreen: View {
             if configManager.bluetoothState == .poweredOn {
                 configManager.startScan()
             }
+            // Probe each paired monitor to find out which are actually being
+            // worn (non-zero BPM) vs just advertising while charging. Drives
+            // the dot in the Player Assignments dropdown.
+            configManager.startLivenessProbing()
+        }
+        .onDisappear {
+            // Stop probing the moment the user leaves the config screen so
+            // the per-player HeartRateManager connections claim the airwaves
+            // during gameplay without interference.
+            configManager.stopLivenessProbing()
         }
     }
 
@@ -467,17 +477,20 @@ struct PlayerSlotPicker: View {
                     Text("Unassigned")
                 }
                 Divider()
-                // Note: we deliberately don't decorate menu items with a "live" dot
-                // here. A device advertising on the heart rate service UUID is not
-                // the same as a device actually transmitting BPM (Polar straps
-                // broadcast while charging). To represent true liveness we'd need
-                // an active GATT probe per monitor — see the outer indicator beside
-                // each PLAYER row for the assigned-monitor presence cue.
+                // The dot is driven by MonitorLivenessProber — a brief GATT
+                // probe per monitor that connects, listens for a non-zero BPM
+                // notification, then disconnects. Charging straps that just
+                // advertise BLE without measuring will *not* get the dot;
+                // straps actually being worn will.
                 ForEach(availableMonitors, id: \.uuid) { monitor in
                     Button {
                         updateSelection(monitor.uuid)
                     } label: {
-                        Text(monitor.name)
+                        if configManager.isDeviceLive(monitor.uuid) {
+                            Label(monitor.name, systemImage: "circle.fill")
+                        } else {
+                            Text(monitor.name)
+                        }
                     }
                 }
             } label: {
