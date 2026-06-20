@@ -113,20 +113,12 @@ struct StartScreen: View {
 
     // MARK: - Bottom CTA
 
-    // Designer-side utilities sit on the left (open the plugin UI, open the
-    // sound-designer sheet) so the operator can audition voicings while
-    // straps are firing on the cards above. Primary CTA stays on the right.
+    // Sound designer button sits on the left so the operator can iterate on
+    // voicings while straps are firing on the cards above. Opening the
+    // MiniFreak plugin UI lives inside the sound designer itself — keeps
+    // this row uncluttered. Primary CTA stays on the right.
     private var bottomSection: some View {
         HStack(spacing: 12) {
-            Button {
-                AUEngine.shared.openPluginUI()
-            } label: {
-                Text("Open plugin")
-            }
-            .buttonStyle(BWOutlineButtonStyle(minWidth: 140, height: 36))
-            .disabled(!miniFreakEnabled)
-            .opacity(miniFreakEnabled ? 1 : 0.35)
-
             Button {
                 soundDesignerVisible = true
             } label: {
