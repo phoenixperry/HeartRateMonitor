@@ -46,15 +46,16 @@ final class AUEngine {
         UserDefaults.standard.bool(forKey: "EnableMiniFreakEngine")
     }
 
-    /// Per-player MIDI note. Same pentatonic voicing as the web OSC monitor.
-    /// Player 1 = C2 (low bass) … Player 6 = C5 (top).
+    /// Per-player MIDI note. C major triad spread across two octaves
+    /// starting from middle C — gives six voices that always consonate.
+    /// Player 1 = C4 (middle C) … Player 6 = G5.
     private let notesByPlayer: [Int: UInt8] = [
-        1: 36, // C2
-        2: 43, // G2
-        3: 50, // D3
-        4: 57, // A3
-        5: 64, // E4
-        6: 72, // C5
+        1: 60, // C4 (middle C)
+        2: 64, // E4
+        3: 67, // G4
+        4: 72, // C5
+        5: 76, // E5
+        6: 79, // G5
     ]
 
     /// How long the engine holds a note before sending note-off.
@@ -156,9 +157,6 @@ final class AUEngine {
         }
     }
 
-    /// Cleared by the window delegate when the user closes it, so a fresh
-    /// `openPluginUI()` call rebuilds rather than reusing a stale shell.
-    fileprivate func didClosePluginWindow() { pluginWindow = nil }
 
     /// Tear down the audio engine and detach the plugin cleanly. Call from
     /// AppDelegate.applicationWillTerminate so the plugin's audio IO thread
@@ -354,12 +352,17 @@ final class AUEngine {
 
 // MARK: - Plugin window delegate
 
-/// Catches the user closing the MiniFreak window so the engine knows to
-/// rebuild it on the next openPluginUI() call.
+/// Intercepts the user clicking the window's close button and hides the
+/// window instead of letting AppKit close it. Why: asking the AU for a
+/// fresh view controller on a second open fails (MiniFreak's gear/settings
+/// path), so we keep the same window+VC for the life of the app and just
+/// orderOut/orderFront it. The window object stays alive for the next
+/// openPluginUI() to bring back forward.
 private final class AUEnginePluginWindowDelegate: NSObject, NSWindowDelegate {
     static let shared = AUEnginePluginWindowDelegate()
-    func windowWillClose(_ notification: Notification) {
-        AUEngine.shared.didClosePluginWindow()
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
     }
 }
 
