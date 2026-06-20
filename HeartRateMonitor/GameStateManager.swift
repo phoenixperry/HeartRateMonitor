@@ -203,18 +203,32 @@ class GameStateManager: ObservableObject {
         researchLogger.endSession()
     }
 
-    // Reset everything to beginning
+    // Reset everything to beginning. Crucially we do *not* BLE-disconnect
+    // the players — straps stay paired and reading BPM, so the Setup screen
+    // shows them already connected and the operator doesn't have to walk
+    // back through Configuration just to re-pair after every round. Each
+    // player still has to tap "Join the group" again because hasStartedPlay
+    // is cleared. Going back into Configuration remains optional via the
+    // gear in the toolbar.
     func resetGame() {
         researchLogger.endSession()
         simulationProvider?.stop()
         simulationProvider = nil
-        players.forEach { $0.disconnect() }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.players.forEach { $0.hasStartedPlay = false }
+        }
 
         gameStartTime = nil
         synchronizationScore = 0
         pauseStartTime = nil
         totalPausedTime = 0
-        currentState = .setup
+        // If any player is already connected (the usual case now that we
+        // don't BLE-disconnect on reset), go straight to .ready so the
+        // "Begin experience" button is visible. The publisher-based
+        // .setup → .ready transition only fires on isConnected *changes*
+        // and no change happens here, so we have to nudge it manually.
+        currentState = players.contains(where: { $0.isConnected }) ? .ready : .setup
     }
 
     // Open configuration screen

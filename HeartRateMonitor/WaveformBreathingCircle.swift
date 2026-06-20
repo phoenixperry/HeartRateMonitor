@@ -15,7 +15,6 @@ struct WaveformBreathingCircle: View {
 
     @State private var currentBPM: Int = 0
     @State private var pendingBPM: Int? = nil
-    @State private var lastCycleTime: Date = Date()
     @State private var progress: Double = 0
     @State private var hasTriggeredCycle = false
 
@@ -49,7 +48,6 @@ struct WaveformBreathingCircle: View {
         }
         .onAppear {
             currentBPM = max(bpm, 1)
-            lastCycleTime = Date()
         }
         .onReceive(timer) { date in
             if shouldAnimate && bpm > 0 { updateProgress(date) }
@@ -60,11 +58,9 @@ struct WaveformBreathingCircle: View {
             // currentBPM was clamped to 1 → cycleDuration = 60 s, meaning the
             // first cycleCompleted() (which fires our MIDI note) wouldn't fire
             // for a full minute. If currentBPM is still at the placeholder,
-            // jump straight to the real BPM and restart the cycle clock.
+            // jump straight to the real BPM.
             if currentBPM <= 1 && newBPM > 1 {
                 currentBPM = newBPM
-                lastCycleTime = Date()
-                progress = 0
                 hasTriggeredCycle = false
             } else {
                 // Normal case mid-session: defer to end of current cycle so
@@ -84,8 +80,14 @@ struct WaveformBreathingCircle: View {
     }
 
     private func updateProgress(_ date: Date) {
-        let elapsed = date.timeIntervalSince(lastCycleTime)
+        // Phase is derived from absolute time (timeIntervalSinceReferenceDate)
+        // rather than a per-circle anchor. That means any two circles running
+        // at the same BPM in the same frame compute the same phase — so
+        // same-BPM players automatically lock into sync, no coordinator
+        // needed. Phase only diverges when their cycleDuration (= 60/BPM)
+        // diverges.
         let duration = cycleDuration(for: currentBPM)
+        let elapsed = date.timeIntervalSinceReferenceDate
         progress = (elapsed.truncatingRemainder(dividingBy: duration)) / duration
 
         if progress < 0.05 && !hasTriggeredCycle {
@@ -103,7 +105,6 @@ struct WaveformBreathingCircle: View {
     }
 
     private func cycleCompleted(at now: Date) {
-        lastCycleTime = now
         if shouldAnimate { onCycleComplete?() }
         if let newBPM = pendingBPM {
             currentBPM = max(newBPM, 1)

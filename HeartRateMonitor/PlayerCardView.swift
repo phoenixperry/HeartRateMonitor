@@ -4,10 +4,8 @@ struct PlayerCardView: View {
     @ObservedObject var viewModel: PlayerCardViewModel
     @State private var shouldAnimate = false
 
-    private let circleSize: CGFloat = 168
-
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 14) {
             // Eyebrow label
             HStack {
                 Eyebrow(text: "Player \(viewModel.id)")
@@ -17,7 +15,13 @@ struct PlayerCardView: View {
                 }
             }
 
-            // Breathing circle with BPM number centred inside.
+            // Breathing circle with BPM number centred inside. Aspect-ratio
+            // locked to a square; the surrounding flex frame lets it grow or
+            // shrink with whatever cell the grid hands us, so 6 cards fit at
+            // 1280×800 and scale up cleanly when the window is enlarged. The
+            // GeometryReader reads the cell size and feeds it to the readout
+            // so the BPM number scales with the circle instead of staying
+            // pinned at 46pt.
             ZStack {
                 WaveformBreathingCircle(
                     bpm: $viewModel.heartRate,
@@ -25,11 +29,14 @@ struct PlayerCardView: View {
                 ) {
                     viewModel.cycleDidComplete()
                 }
-                .frame(width: circleSize, height: circleSize)
+                .aspectRatio(1, contentMode: .fit)
 
-                bpmReadout
+                GeometryReader { geo in
+                    bpmReadout(circleSize: min(geo.size.width, geo.size.height))
+                        .frame(width: geo.size.width, height: geo.size.height)
+                }
             }
-            .frame(width: circleSize, height: circleSize)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // Connection state line.
             stateLine
@@ -39,8 +46,15 @@ struct PlayerCardView: View {
                 actions
             }
         }
-        .padding(24)
-        .frame(width: 240)
+        .padding(18)
+        // Cards keep a near-square ratio so the breathing circle inside stays
+        // big regardless of whether the grid cell is wide-short or
+        // tall-narrow. Without this the card stretches to fill its cell and
+        // the aspectRatio-fit circle collapses to the cell's short side.
+        // 0.95 is "slightly taller than wide" — matches the look from the
+        // original 240×~260 card design.
+        .aspectRatio(0.95, contentMode: .fit)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.canvas)
         .bwOutline(1)
         .onAppear {
@@ -56,23 +70,32 @@ struct PlayerCardView: View {
 
     // MARK: - Pieces
 
-    private var bpmReadout: some View {
-        VStack(spacing: 0) {
+    /// Renders the BPM number and "bpm" label sized proportionally to the
+    /// breathing circle. Ratios (≈0.27 for the number, ≈0.06 for the label)
+    /// match the original 46pt / 10pt against the original 168pt circle, so
+    /// the visual weight at the default window size is unchanged — but the
+    /// readout now grows when the window is fullscreened or shrinks as the
+    /// user drags the window smaller.
+    private func bpmReadout(circleSize: CGFloat) -> some View {
+        let bpmFont = max(circleSize * 0.27, 14)
+        let labelFont = max(circleSize * 0.06, 8)
+        return VStack(spacing: 0) {
             if viewModel.isConnected && viewModel.heartRate > 0 {
                 Text("\(viewModel.heartRate)")
-                    .font(Type.display(46, weight: .medium))
+                    .font(Type.display(bpmFont, weight: .medium))
                     .foregroundColor(Palette.ink)
                 Text("bpm")
-                    .font(Type.sans(10, weight: .medium))
+                    .font(Type.sans(labelFont, weight: .medium))
                     .tracking(2.4)
                     .textCase(.uppercase)
                     .foregroundColor(Palette.muted)
             } else {
                 Text("—")
-                    .font(Type.display(46, weight: .medium))
+                    .font(Type.display(bpmFont, weight: .medium))
                     .foregroundColor(Palette.line)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var stateLine: some View {

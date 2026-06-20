@@ -34,5 +34,10 @@ struct HeartRateMonitorApp: App {
                 configManager: configManager
             )
         }
+        // 1280×800 (16:10 laptop ratio) on first launch; the layout is
+        // proportional so the same design fills the window at fullscreen
+        // for the install. No min/max — user can drag to any size and the
+        // grid + cards adapt down (or up) to whatever they pick.
+        .defaultSize(width: 1280, height: 800)
     }
 }

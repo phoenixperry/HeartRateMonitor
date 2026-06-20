@@ -12,48 +12,62 @@ struct ConfigurationScreen: View {
     @State private var miniFreakEnabled = UserDefaults.standard.bool(forKey: "EnableMiniFreakEngine")
 
     var body: some View {
-        ZStack {
-            Palette.canvas.ignoresSafeArea()
-            content
+        // GeometryReader gives us a width-driven scale factor (clamped 0.75–1.6
+        // around the 1280 base) which we multiply into the key paddings.
+        // Outer chrome — horizontal padding, top padding, footer padding —
+        // breathes with the window. Inner spacings within widgets stay fixed
+        // so toggles, dropdowns and text don't get weirdly stretched.
+        GeometryReader { geo in
+            let widthScale = max(min(geo.size.width / 1280, 1.6), 0.75)
+            ZStack {
+                Palette.canvas.ignoresSafeArea()
+                content(widthScale: widthScale)
+            }
+            .tint(Palette.ink)
+            // Force light appearance inside this view so system widgets (Toggle
+            // labels, alert text, etc.) resolve Color.primary to black against
+            // the white canvas. Without this, Color.primary becomes white in
+            // system dark mode and labels vanish against the forced-white
+            // background.
+            .preferredColorScheme(.light)
         }
-        .tint(Palette.ink)
-        // Force light appearance inside this view so system widgets (Toggle labels,
-        // alert text, etc.) resolve Color.primary to black against the white canvas.
-        // Without this, Color.primary becomes white in system dark mode and labels
-        // vanish against the forced-white background.
-        .preferredColorScheme(.light)
     }
 
-    private var content: some View {
+    private func content(widthScale: CGFloat) -> some View {
+        // Scrollable area takes everything *except* the action buttons, which
+        // are pinned to the bottom so Reset / Cancel / Save & continue are
+        // always reachable without scrolling. Earlier the buttons were inside
+        // the ScrollView and could fall off the bottom of small windows.
+        VStack(spacing: 0) {
+            ScrollView(.vertical, showsIndicators: false) {
+                innerContent
+                    .padding(.horizontal, 28 * widthScale)
+                    .padding(.top, 24 * widthScale)
+                    .padding(.bottom, 16)
+                    .frame(maxWidth: .infinity)
+            }
+
+            actionFooter
+                .padding(.horizontal, 28 * widthScale)
+                .padding(.vertical, 16 * widthScale)
+        }
+    }
+
+    private var innerContent: some View {
         VStack(spacing: 20) {
-            // Header
-            VStack(spacing: 6) {
-                Eyebrow(text: "Settings")
-                Text("Device configuration")
-                    .font(Type.display(28, weight: .medium))
-                    .foregroundColor(Palette.ink)
-                    .kerning(-0.4)
+            // Header — title-only, left-aligned. Player count stepper lives
+            // under the Player Assignments column where it belongs visually.
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Eyebrow(text: "Settings")
+                    Text("Device configuration")
+                        .font(Type.display(28, weight: .medium))
+                        .foregroundColor(Palette.ink)
+                        .kerning(-0.4)
+                }
+                Spacer()
             }
             .padding(.top, 8)
-
-            // Player count — custom monochrome stepper.
-            HStack(spacing: 16) {
-                Text("Number of players")
-                    .font(Type.sans(12, weight: .medium))
-                    .tracking(2)
-                    .textCase(.uppercase)
-                    .foregroundColor(Palette.muted)
-
-                MonochromeStepper(
-                    value: configManager.config.playerCount,
-                    range: AppConfiguration.minPlayers...AppConfiguration.maxPlayers,
-                    onChange: { configManager.setPlayerCount($0) }
-                )
-            }
-            .padding(.horizontal)
-
-            Hairline()
-                .padding(.vertical, 4)
 
             // Main content in two columns
             HStack(alignment: .top, spacing: 36) {
@@ -137,7 +151,7 @@ struct ConfigurationScreen: View {
                     .frame(width: 1)
                     .padding(.vertical, 4)
 
-                // Right column: Player assignments
+                // Right column: Player assignments + count stepper below.
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeading(
                         title: "Player assignments",
@@ -159,6 +173,25 @@ struct ConfigurationScreen: View {
                     .background(Palette.canvas)
                     .bwOutline(1)
 
+                    // Player count stepper — sits under the assignment list
+                    // because the two controls together govern "who plays".
+                    HStack(spacing: 16) {
+                        Text("Number of players")
+                            .font(Type.sans(12, weight: .medium))
+                            .tracking(2)
+                            .textCase(.uppercase)
+                            .foregroundColor(Palette.muted)
+
+                        MonochromeStepper(
+                            value: configManager.config.playerCount,
+                            range: AppConfiguration.minPlayers...AppConfiguration.maxPlayers,
+                            onChange: { configManager.setPlayerCount($0) }
+                        )
+
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+
                     Spacer()
                 }
                 .frame(minWidth: 300)
@@ -166,9 +199,6 @@ struct ConfigurationScreen: View {
             .disabled(simulationEnabled)
             .opacity(simulationEnabled ? 0.4 : 1.0)
             .padding(.vertical, 8)
-
-            Hairline()
-                .padding(.vertical, 8)
 
             // Development settings — full width, flush left.
             VStack(alignment: .leading, spacing: 14) {
@@ -262,32 +292,7 @@ struct ConfigurationScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            Hairline()
-                .padding(.top, 8)
-
-            // Action buttons
-            HStack(spacing: 16) {
-                Button("Reset all") { showResetAlert = true }
-                    .buttonStyle(BWTextLinkButtonStyle())
-
-                Spacer()
-
-                Button("Cancel") { gameStateManager.closeConfiguration() }
-                    .buttonStyle(BWOutlineButtonStyle(minWidth: 120, height: 42))
-
-                Button("Save & continue") {
-                    configManager.saveConfig()
-                    gameStateManager.closeConfiguration()
-                }
-                .buttonStyle(BWPrimaryButtonStyle(minWidth: 200, height: 42))
-                .disabled(!simulationEnabled && configManager.configurationNeeded)
-                .opacity((!simulationEnabled && configManager.configurationNeeded) ? 0.4 : 1)
-            }
-            .padding()
         }
-        .frame(minWidth: 700, minHeight: 500)
-        .padding()
         .alert("Reset Configuration?", isPresented: $showResetAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Reset", role: .destructive) {
@@ -325,6 +330,29 @@ struct ConfigurationScreen: View {
             // the per-player HeartRateManager connections claim the airwaves
             // during gameplay without interference.
             configManager.stopLivenessProbing()
+        }
+    }
+
+    // Pinned footer with the destructive/cancel/primary actions. Sits
+    // outside the ScrollView in `content(...)` so it's always reachable
+    // regardless of how short the window is.
+    private var actionFooter: some View {
+        HStack(spacing: 16) {
+            Button("Reset all") { showResetAlert = true }
+                .buttonStyle(BWTextLinkButtonStyle())
+
+            Spacer()
+
+            Button("Cancel") { gameStateManager.closeConfiguration() }
+                .buttonStyle(BWOutlineButtonStyle(minWidth: 120, height: 42))
+
+            Button("Save & continue") {
+                configManager.saveConfig()
+                gameStateManager.closeConfiguration()
+            }
+            .buttonStyle(BWPrimaryButtonStyle(minWidth: 200, height: 42))
+            .disabled(!simulationEnabled && configManager.configurationNeeded)
+            .opacity((!simulationEnabled && configManager.configurationNeeded) ? 0.4 : 1)
         }
     }
 

@@ -10,19 +10,16 @@ struct GameScreen: View {
         ZStack {
             Palette.canvas.ignoresSafeArea()
 
-            VStack(spacing: 36) {
+            VStack(spacing: 24) {
                 header
 
-                Hairline()
-
                 playerGrid
-
-                Spacer(minLength: 0)
 
                 controls
             }
             .padding(.horizontal, 48)
-            .padding(.vertical, 40)
+            .padding(.top, 48)
+            .padding(.bottom, 32)
         }
         .onAppear { recalcRemaining() }
         .onReceive(timer) { _ in recalcRemaining() }
@@ -71,11 +68,28 @@ struct GameScreen: View {
     // MARK: - Player grid
 
     private var playerGrid: some View {
-        LazyVGrid(columns: gridColumns, spacing: 28) {
-            ForEach(gameStateManager.players) { player in
-                PlayerCardView(viewModel: player)
+        let cols = gridColumnCount
+        let players = gameStateManager.players
+        let rows = stride(from: 0, to: players.count, by: cols).map { startIdx in
+            Array(players[startIdx..<min(startIdx + cols, players.count)])
+        }
+        return VStack(spacing: 20) {
+            ForEach(rows.indices, id: \.self) { rowIdx in
+                HStack(spacing: 20) {
+                    ForEach(rows[rowIdx]) { player in
+                        PlayerCardView(viewModel: player)
+                    }
+                    // Pad short last row so card widths stay uniform.
+                    if rows[rowIdx].count < cols {
+                        ForEach(0..<(cols - rows[rowIdx].count), id: \.self) { _ in
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Controls
@@ -108,14 +122,11 @@ struct GameScreen: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    private var gridColumns: [GridItem] {
+    private var gridColumnCount: Int {
         let count = gameStateManager.players.count
-        if count <= 3 {
-            return Array(repeating: GridItem(.flexible(), spacing: 28), count: max(count, 1))
-        } else {
-            let columnCount = count <= 4 ? 2 : 3
-            return Array(repeating: GridItem(.flexible(), spacing: 28), count: columnCount)
-        }
+        if count <= 3 { return max(count, 1) }
+        if count <= 4 { return 2 }
+        return 3
     }
 }
 
@@ -165,6 +176,7 @@ struct PausedScreen: View {
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 48)
+            .frame(maxWidth: .infinity)
         }
     }
 }
@@ -208,6 +220,7 @@ struct ResultsScreen: View {
             }
             .padding(.horizontal, 48)
             .padding(.vertical, 48)
+            .frame(maxWidth: .infinity)
         }
     }
 

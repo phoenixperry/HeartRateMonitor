@@ -7,33 +7,46 @@ struct StartScreen: View {
         ZStack {
             Palette.canvas.ignoresSafeArea()
 
-            VStack(spacing: 56) {
+            VStack(spacing: 24) {
                 titleBlock
                     .bwFadeIn(delay: 0.05)
 
                 playerGrid
                     .bwFadeIn(delay: 0.2)
 
-                Spacer(minLength: 0)
-
                 bottomSection
                     .bwFadeIn(delay: 0.35)
             }
             .padding(.horizontal, 48)
-            .padding(.vertical, 56)
+            .padding(.top, 48)
+            .padding(.bottom, 32)
         }
     }
 
     // MARK: - Title
 
+    // Header mirrors GameScreen's pattern (left-aligned title + right-aligned
+    // status) so the card grid below sits in the same vertical position on
+    // both screens — only the framing copy changes, not the layout.
     private var titleBlock: some View {
-        VStack(spacing: 14) {
-            Text("Resonant Thrum")
-                .font(Type.display(60, weight: .medium))
-                .foregroundColor(Palette.ink)
-                .kerning(-0.8)
-            Hairline().frame(width: 64)
-                .padding(.top, 6)
+        HStack(alignment: .firstTextBaseline, spacing: 24) {
+            VStack(alignment: .leading, spacing: 6) {
+                Eyebrow(text: "Setup")
+                Text("Resonant Thrum")
+                    .font(Type.display(40, weight: .medium))
+                    .foregroundColor(Palette.ink)
+                    .kerning(-0.5)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                Eyebrow(text: "Connected")
+                Text("\(gameStateManager.connectedPlayerCount)")
+                    .font(Type.display(40, weight: .medium))
+                    .foregroundColor(Palette.ink)
+                    .kerning(-0.5)
+            }
         }
     }
 
@@ -44,13 +57,34 @@ struct StartScreen: View {
             if gameStateManager.players.isEmpty {
                 emptyState
             } else {
-                LazyVGrid(columns: gridColumns, spacing: 28) {
-                    ForEach(gameStateManager.players) { player in
-                        PlayerCardView(viewModel: player)
-                    }
-                }
+                playerRows
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var playerRows: some View {
+        let cols = gridColumnCount
+        let players = gameStateManager.players
+        let rows = stride(from: 0, to: players.count, by: cols).map { startIdx in
+            Array(players[startIdx..<min(startIdx + cols, players.count)])
+        }
+        return VStack(spacing: 20) {
+            ForEach(rows.indices, id: \.self) { rowIdx in
+                HStack(spacing: 20) {
+                    ForEach(rows[rowIdx]) { player in
+                        PlayerCardView(viewModel: player)
+                    }
+                    if rows[rowIdx].count < cols {
+                        ForEach(0..<(cols - rows[rowIdx].count), id: \.self) { _ in
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyState: some View {
@@ -70,18 +104,14 @@ struct StartScreen: View {
 
     // MARK: - Bottom CTA
 
+    // Matches GameScreen's pinned controls row — same vertical position so
+    // the only thing that changes Start → Game is the button label.
     private var bottomSection: some View {
-        VStack(spacing: 16) {
-            Text("\(gameStateManager.connectedPlayerCount) player\(gameStateManager.connectedPlayerCount == 1 ? "" : "s") connected")
-                .font(Type.sans(11, weight: .medium))
-                .tracking(2)
-                .textCase(.uppercase)
-                .foregroundColor(Palette.muted)
-
+        HStack(spacing: 16) {
             Button("Begin experience") {
                 gameStateManager.startGame()
             }
-            .buttonStyle(BWPrimaryButtonStyle(minWidth: 260, height: 52))
+            .buttonStyle(BWPrimaryButtonStyle(minWidth: 260, height: 44))
         }
         .opacity(gameStateManager.currentState == .ready ? 1 : 0)
         .allowsHitTesting(gameStateManager.currentState == .ready)
@@ -90,14 +120,11 @@ struct StartScreen: View {
 
     // MARK: - Layout
 
-    private var gridColumns: [GridItem] {
+    private var gridColumnCount: Int {
         let count = gameStateManager.players.count
-        if count <= 3 {
-            return Array(repeating: GridItem(.flexible(), spacing: 28), count: max(count, 1))
-        } else {
-            let columnCount = count <= 4 ? 2 : 3
-            return Array(repeating: GridItem(.flexible(), spacing: 28), count: columnCount)
-        }
+        if count <= 3 { return max(count, 1) }
+        if count <= 4 { return 2 }
+        return 3
     }
 }
 
