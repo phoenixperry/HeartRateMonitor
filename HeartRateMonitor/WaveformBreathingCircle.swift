@@ -55,7 +55,22 @@ struct WaveformBreathingCircle: View {
             if shouldAnimate && bpm > 0 { updateProgress(date) }
         }
         .onChange(of: bpm) { oldBPM, newBPM in
-            if newBPM != oldBPM { pendingBPM = newBPM }
+            guard newBPM != oldBPM else { return }
+            // Bootstrap case: card was rendered before any BPM arrived, so
+            // currentBPM was clamped to 1 → cycleDuration = 60 s, meaning the
+            // first cycleCompleted() (which fires our MIDI note) wouldn't fire
+            // for a full minute. If currentBPM is still at the placeholder,
+            // jump straight to the real BPM and restart the cycle clock.
+            if currentBPM <= 1 && newBPM > 1 {
+                currentBPM = newBPM
+                lastCycleTime = Date()
+                progress = 0
+                hasTriggeredCycle = false
+            } else {
+                // Normal case mid-session: defer to end of current cycle so
+                // the visual doesn't jump.
+                pendingBPM = newBPM
+            }
         }
         .onChange(of: progress) { _, _ in
             onScaleUpdate?(scale(for: progress))

@@ -193,13 +193,24 @@ struct ConfigurationScreen: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Drive Arturia MiniFreak V", isOn: $miniFreakEnabled)
-                        .toggleStyle(RadialToggleStyle())
-                        .onChange(of: miniFreakEnabled) { _, newValue in
-                            UserDefaults.standard.set(newValue, forKey: "EnableMiniFreakEngine")
+                    HStack(alignment: .center) {
+                        Toggle("Drive Arturia MiniFreak V", isOn: $miniFreakEnabled)
+                            .toggleStyle(RadialToggleStyle())
+                            .onChange(of: miniFreakEnabled) { _, newValue in
+                                UserDefaults.standard.set(newValue, forKey: "EnableMiniFreakEngine")
+                            }
+                        Spacer()
+                        Button {
+                            AUEngine.shared.openPluginUI()
+                        } label: {
+                            Text("Open plugin")
                         }
+                        .buttonStyle(BWOutlineButtonStyle(minWidth: 140, height: 32))
+                        .disabled(!miniFreakEnabled)
+                        .opacity(miniFreakEnabled ? 1 : 0.4)
+                    }
 
-                    Text("Loads the MiniFreak V audio unit in-process. Each heartbeat fires the player's locked pentatonic MIDI note (P1=C2 … P6=C5) into the plugin (and the hardware over USB when paired). Requires the app sandbox to be disabled.")
+                    Text("Loads MiniFreak V in-process. Each heartbeat fires the player's locked pentatonic MIDI note (P1=C2 … P6=C5) on MIDI channel 1. Open the plugin UI to switch to a polyphonic preset (otherwise all players collapse to the last note), load/save presets, and bond the hardware via MIDI input.")
                         .font(Type.sans(11))
                         .foregroundColor(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)

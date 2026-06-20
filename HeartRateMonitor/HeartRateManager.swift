@@ -272,18 +272,17 @@ extension HeartRateManager: CBPeripheralDelegate {
 
     // MARK: - Characteristic Parsing
     private func getHeartRateBPM(from characteristic: CBCharacteristic) {
-        guard let data = characteristic.value else { return }
+        guard let data = characteristic.value, data.count >= 2 else { return }
 
+        // Per BLE Heart Rate Measurement spec (0x2A37): byte 0 = flags,
+        // bit 0 selects UInt8 vs UInt16 BPM value, then 1 or 2 bytes follow.
         var bpm: UInt16 = 0
-        let firstByte = data[0]
-
-        if (firstByte & 0x01) == 0 {
+        let flags = data[0]
+        if (flags & 0x01) == 0 {
             bpm = UInt16(data[1])
-        } else {
+        } else if data.count >= 3 {
             bpm = UInt16(data[1]) | (UInt16(data[2]) << 8)
         }
-
-//        print("❤️ Heart Rate: \(bpm) BPM")
 
         DispatchQueue.main.async {
             self.heartRate = bpm

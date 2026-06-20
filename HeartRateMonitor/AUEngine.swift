@@ -28,6 +28,9 @@
 import Foundation
 import AVFoundation
 import AudioToolbox
+import AppKit
+import CoreAudioKit   // exposes AUAudioUnit.requestViewController(completionHandler:)
+import CoreMIDI       // hardware → plugin MIDI bridge
 
 final class AUEngine {
 
@@ -83,6 +86,21 @@ final class AUEngine {
     /// Tracks the last note we sent per player so we can release it cleanly.
     private var activeNotes: [Int: UInt8] = [:]
 
+    /// Strong reference to the plugin's UI window so it isn't deallocated
+    /// the moment the helper returns.
+    private var pluginWindow: NSWindow?
+
+    // MARK: - Hardware MIDI bridge state
+    // Ableton routes hardware MIDI into the plugin for us; in a custom AU host
+    // we have to do it ourselves. These are the CoreMIDI handles for that.
+    private var midiClient: MIDIClientRef = 0
+    private var midiInputPort: MIDIPortRef = 0
+    private var bridgedSources: [MIDIEndpointRef] = []
+    private let hardwareNameMatch = "MiniFreak"
+
+    /// True if the engine is loaded and ready for `openPluginUI()` to work.
+    var isReady: Bool { hasStarted && instrument != nil }
+
     // MARK: - Public API
     // Single entry point used by PlayerCardViewModel. Bootstraps the engine on
     // first call if enabled, then sends a per-heartbeat MIDI note.
@@ -94,6 +112,77 @@ final class AUEngine {
             guard !startFailed else { return }
         }
         sendNoteOn(player: player)
+    }
+
+    /// Open the MiniFreak V plugin's native UI in a floating window. From there
+    /// you can load/save presets, set the voice mode to polyphonic, configure
+    /// MIDI input from the hardware (to bond it), edit sound design, etc.
+    /// Safe to call before the engine has started — it'll bootstrap if needed.
+    /// Idempotent: a second call just brings the existing window forward.
+    func openPluginUI() {
+        if let existing = pluginWindow {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        if !hasStarted { startEngine() }
+        guard let instrument else {
+            print("🎹 openPluginUI: engine isn't loaded yet — nothing to show")
+            return
+        }
+
+        instrument.auAudioUnit.requestViewController { [weak self] viewController in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let vc = viewController else {
+                    print("🎹 openPluginUI: plugin returned no view controller")
+                    return
+                }
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 900, height: 620),
+                    styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.title = "MiniFreak V"
+                window.contentViewController = vc
+                window.center()
+                window.isReleasedWhenClosed = false
+                window.delegate = AUEnginePluginWindowDelegate.shared
+                self.pluginWindow = window
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+    }
+
+    /// Cleared by the window delegate when the user closes it, so a fresh
+    /// `openPluginUI()` call rebuilds rather than reusing a stale shell.
+    fileprivate func didClosePluginWindow() { pluginWindow = nil }
+
+    /// Tear down the audio engine and detach the plugin cleanly. Call from
+    /// AppDelegate.applicationWillTerminate so the plugin's audio IO thread
+    /// doesn't keep reading freed memory after the app dies — that's what
+    /// produces the EXC_BAD_ACCESS in MiniFreak V on quit.
+    func shutdown() {
+        guard hasStarted else { return }
+        tearDownMIDIHardwareBridge()
+        allNotesOff()
+        if let instrument {
+            // Stop notifications + render before detach so the IO thread doesn't
+            // tick on a half-freed graph.
+            engine.disconnectNodeInput(instrument)
+            engine.detach(instrument)
+        }
+        engine.stop()
+        if let win = pluginWindow {
+            win.delegate = nil
+            win.close()
+            pluginWindow = nil
+        }
+        instrument = nil
+        hasStarted = false
+        print("🎹 AUEngine: shut down cleanly.")
     }
 
     /// Call from GameStateManager.endGame / resetGame if you want notes to
@@ -139,11 +228,99 @@ final class AUEngine {
                 self.instrument = mi
                 self.hasStarted = true
                 print("🎹 AUEngine: MiniFreak V loaded and engine started.")
+                self.setupMIDIHardwareBridge()
             } catch {
                 print("🎹 AUEngine: engine.start() failed — \(error.localizedDescription)")
                 self.startFailed = true
             }
         }
+    }
+
+    // MARK: - Hardware MIDI bridge
+    // Forwards every MIDI event from a connected MiniFreak hardware into the
+    // plugin, just like Ableton would. One-direction (hardware → plugin) only;
+    // plugin → hardware sync isn't possible from plugin mode anyway.
+
+    private func setupMIDIHardwareBridge() {
+        guard midiClient == 0 else { return }
+
+        var status = MIDIClientCreateWithBlock("HRM-AUHost" as CFString, &midiClient) { _ in /* device-change notifications, unused */ }
+        guard status == noErr else {
+            print("🎹 MIDI bridge: MIDIClientCreate failed (\(status))"); return
+        }
+
+        status = MIDIInputPortCreateWithBlock(midiClient, "HRM-In" as CFString, &midiInputPort) { [weak self] listPtr, _ in
+            self?.routeMIDIPackets(listPtr)
+        }
+        guard status == noErr else {
+            print("🎹 MIDI bridge: MIDIInputPortCreate failed (\(status))"); return
+        }
+
+        connectAllMatchingSources()
+    }
+
+    private func connectAllMatchingSources() {
+        let count = MIDIGetNumberOfSources()
+        for i in 0..<count {
+            let source = MIDIGetSource(i)
+            guard source != 0 else { continue }
+
+            var nameProp: Unmanaged<CFString>?
+            let s = MIDIObjectGetStringProperty(source, kMIDIPropertyName, &nameProp)
+            guard s == noErr, let cfName = nameProp?.takeRetainedValue() as String? else { continue }
+
+            if cfName.localizedCaseInsensitiveContains(hardwareNameMatch) {
+                let cs = MIDIPortConnectSource(midiInputPort, source, nil)
+                if cs == noErr {
+                    bridgedSources.append(source)
+                    print("🎹 MIDI bridge: connected to \(cfName)")
+                } else {
+                    print("🎹 MIDI bridge: failed to connect \(cfName) (\(cs))")
+                }
+            }
+        }
+        if bridgedSources.isEmpty {
+            print("🎹 MIDI bridge: no MiniFreak device found in CoreMIDI sources")
+        }
+    }
+
+    private func routeMIDIPackets(_ listPtr: UnsafePointer<MIDIPacketList>) {
+        guard let mi = instrument else { return }
+
+        let list = listPtr.pointee
+        var packet = list.packet
+        for _ in 0..<list.numPackets {
+            forwardPacket(packet, to: mi)
+            packet = withUnsafePointer(to: &packet) { MIDIPacketNext($0).pointee }
+        }
+    }
+
+    private func forwardPacket(_ packet: MIDIPacket, to mi: AVAudioUnitMIDIInstrument) {
+        let length = Int(packet.length)
+        guard length > 0 else { return }
+        guard let scheduleMIDI = mi.auAudioUnit.scheduleMIDIEventBlock else {
+            print("🎹 MIDI bridge: AU has no scheduleMIDIEventBlock — can't forward")
+            return
+        }
+
+        // Extract the bytes out of the fixed-size tuple `data` (256 bytes per
+        // MIDIPacket) and hand the whole packet straight into the AU's MIDI
+        // ingress. This is the general path that accepts channel voice
+        // messages, SysEx, system realtime — everything.
+        var data = packet.data
+        withUnsafeBytes(of: &data) { rawBuf in
+            guard let base = rawBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            scheduleMIDI(AUEventSampleTimeImmediate, 0, length, base)
+        }
+    }
+
+    private func tearDownMIDIHardwareBridge() {
+        for source in bridgedSources {
+            MIDIPortDisconnectSource(midiInputPort, source)
+        }
+        bridgedSources.removeAll()
+        if midiInputPort != 0 { MIDIPortDispose(midiInputPort); midiInputPort = 0 }
+        if midiClient != 0    { MIDIClientDispose(midiClient);    midiClient    = 0 }
     }
 
     // MARK: - MIDI dispatch
@@ -172,6 +349,17 @@ final class AUEngine {
             mi.sendMIDIEvent(0x80 | self.midiChannel, data1: scheduled, data2: 0)
             self.activeNotes.removeValue(forKey: player)
         }
+    }
+}
+
+// MARK: - Plugin window delegate
+
+/// Catches the user closing the MiniFreak window so the engine knows to
+/// rebuild it on the next openPluginUI() call.
+private final class AUEnginePluginWindowDelegate: NSObject, NSWindowDelegate {
+    static let shared = AUEnginePluginWindowDelegate()
+    func windowWillClose(_ notification: Notification) {
+        AUEngine.shared.didClosePluginWindow()
     }
 }
 

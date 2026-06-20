@@ -148,15 +148,27 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
             guard let self = self else { return }
 
             DispatchQueue.main.async {
-                // Only update if value changed to avoid unnecessary view updates
+                let wasZero = self.heartRate == 0
+                let isNonZero = bpm > 0
+
                 if self.heartRate != Int(bpm) {
                     self.heartRate = Int(bpm)
+                }
 
-                    // Disconnect if heart rate drops to 0 during gameplay
-                    if bpm == 0 && self.hasStartedPlay {
-                        print("💔 Player \(self.id) heart rate dropped to 0 - disconnecting")
-                        self.disconnect()
-                    }
+                // Fire an immediate note the first time BPM actually arrives
+                // for a player who's already joined the group, so they don't
+                // wait a full breathing-circle cycle (~1 s at resting BPM, but
+                // up to a minute if currentBPM was still at the bootstrap
+                // value) before they hear anything. Subsequent beats come from
+                // the cycle-completed callback as normal.
+                if wasZero && isNonZero && self.hasStartedPlay && self.isConnected {
+                    AUEngine.shared.noteOnIfEnabled(player: self.id)
+                }
+
+                // Disconnect if heart rate drops to 0 during gameplay
+                if bpm == 0 && self.hasStartedPlay {
+                    print("💔 Player \(self.id) heart rate dropped to 0 - disconnecting")
+                    self.disconnect()
                 }
             }
         }

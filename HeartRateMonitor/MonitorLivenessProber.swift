@@ -180,23 +180,19 @@ extension MonitorLivenessProber: CBPeripheralDelegate {
               characteristic.uuid == heartRateMeasurementUUID,
               let data = characteristic.value, data.count >= 2 else { return }
 
-        // Parse BPM exactly like HeartRateManager does — heart rate measurement
-        // is either 8-bit (flags bit 0 = 0) or 16-bit (flags bit 0 = 1).
-        let firstByte = data[0]
-        let bpm: UInt16
-        if (firstByte & 0x01) == 0 {
+        // Same BLE 0x2A37 parse as HeartRateManager.
+        let flags = data[0]
+        var bpm: UInt16 = 0
+        if (flags & 0x01) == 0 {
             bpm = UInt16(data[1])
         } else if data.count >= 3 {
             bpm = UInt16(data[1]) | (UInt16(data[2]) << 8)
-        } else {
-            return
         }
 
         if bpm > 0 {
             finishProbe(uuid: peripheral.identifier, isLive: true)
         }
-        // A reported BPM of 0 means "no skin contact" — keep waiting for a real
-        // sample. The per-probe timeout will eventually mark it inactive if
-        // nothing better arrives.
+        // BPM = 0 means strap not yet calibrating skin contact — let the
+        // per-probe timeout decide.
     }
 }
