@@ -9,6 +9,7 @@ struct ConfigurationScreen: View {
     @State private var deviceToRemove: UUID?
     @State private var researchLoggingEnabled = ResearchLogger.shared.isEnabled
     @State private var simulationEnabled = UserDefaults.standard.bool(forKey: "SimulateHeartRateMonitors")
+    @State private var miniFreakEnabled = UserDefaults.standard.bool(forKey: "EnableMiniFreakEngine")
 
     var body: some View {
         ZStack {
@@ -170,23 +171,40 @@ struct ConfigurationScreen: View {
                 .padding(.vertical, 8)
 
             // Development settings — full width, flush left.
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 SectionHeading(title: "Development settings")
 
-                Toggle("Simulate Heart Rate Monitors", isOn: $simulationEnabled)
-                    .toggleStyle(RadialToggleStyle())
-                    .onChange(of: simulationEnabled) { _, newValue in
-                        UserDefaults.standard.set(newValue, forKey: "SimulateHeartRateMonitors")
-                        if newValue {
-                            researchLoggingEnabled = false
-                            ResearchLogger.shared.isEnabled = false
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Simulate Heart Rate Monitors", isOn: $simulationEnabled)
+                        .toggleStyle(RadialToggleStyle())
+                        .onChange(of: simulationEnabled) { _, newValue in
+                            UserDefaults.standard.set(newValue, forKey: "SimulateHeartRateMonitors")
+                            if newValue {
+                                researchLoggingEnabled = false
+                                ResearchLogger.shared.isEnabled = false
+                            }
                         }
-                    }
 
-                Text("Simulated BPM data is generated for all players without needing physical Bluetooth heart rate monitors.")
-                    .font(Type.sans(11))
-                    .foregroundColor(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("Simulated BPM data is generated for all players without needing physical Bluetooth heart rate monitors.")
+                        .font(Type.sans(11))
+                        .foregroundColor(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 24)   // line up with toggle label
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Drive Arturia MiniFreak V", isOn: $miniFreakEnabled)
+                        .toggleStyle(RadialToggleStyle())
+                        .onChange(of: miniFreakEnabled) { _, newValue in
+                            UserDefaults.standard.set(newValue, forKey: "EnableMiniFreakEngine")
+                        }
+
+                    Text("Loads the MiniFreak V audio unit in-process. Each heartbeat fires the player's locked pentatonic MIDI note (P1=C2 … P6=C5) into the plugin (and the hardware over USB when paired). Requires the app sandbox to be disabled.")
+                        .font(Type.sans(11))
+                        .foregroundColor(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 24)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -281,14 +299,10 @@ struct ConfigurationScreen: View {
             Text("This will remove the device from your paired list.")
         }
         .onAppear {
-            print("🔬 CFG: ConfigurationScreen.onAppear at \(Date()) — bluetoothState=\(configManager.bluetoothState.rawValue) (.poweredOn=\(CBManagerState.poweredOn.rawValue))")
-            print("🔬 CFG:   paired monitors in config: \(configManager.config.monitors.count) — \(configManager.config.monitors.map { "\($0.name)/\($0.uuid)" })")
             // Surface already-connected straps even if scan can't run yet.
             configManager.refreshConnectedDevices()
             if configManager.bluetoothState == .poweredOn {
                 configManager.startScan()
-            } else {
-                print("🔬 CFG:   ⚠️ scan NOT triggered on appear — Bluetooth state was \(configManager.bluetoothState.rawValue) (this is one possible cause of false 'Offline')")
             }
         }
     }
@@ -453,15 +467,17 @@ struct PlayerSlotPicker: View {
                     Text("Unassigned")
                 }
                 Divider()
+                // Note: we deliberately don't decorate menu items with a "live" dot
+                // here. A device advertising on the heart rate service UUID is not
+                // the same as a device actually transmitting BPM (Polar straps
+                // broadcast while charging). To represent true liveness we'd need
+                // an active GATT probe per monitor — see the outer indicator beside
+                // each PLAYER row for the assigned-monitor presence cue.
                 ForEach(availableMonitors, id: \.uuid) { monitor in
                     Button {
                         updateSelection(monitor.uuid)
                     } label: {
-                        if isDeviceAvailable(monitor.uuid) {
-                            Label(monitor.name, systemImage: "circle.fill")
-                        } else {
-                            Text(monitor.name)
-                        }
+                        Text(monitor.name)
                     }
                 }
             } label: {

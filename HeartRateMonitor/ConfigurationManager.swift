@@ -144,9 +144,7 @@ class ConfigurationManager: NSObject, ObservableObject {
     // MARK: - Device Discovery
 
     func startScan(duration: TimeInterval = 10.0) {
-        print("🔬 CFG: startScan() called — bluetoothState=\(centralManager.state.rawValue) (.poweredOn=\(CBManagerState.poweredOn.rawValue)) at \(Date())")
         guard centralManager.state == .poweredOn else {
-            print("🔬 CFG: startScan() SKIPPED — Bluetooth not ready (state=\(centralManager.state.rawValue))")
             print("⚠️ Bluetooth not ready for scanning")
             return
         }
@@ -164,29 +162,6 @@ class ConfigurationManager: NSObject, ObservableObject {
             CBCentralManagerScanOptionAllowDuplicatesKey: false
         ])
         print("🔍 Started scanning for heart rate devices...")
-        print("🔬 CFG: scan armed for \(duration)s, filtering serviceUUID=180D")
-
-        // 🔬 DIAGNOSTIC: ask CoreBluetooth what it already knows, independent of advertising.
-        let pairedUUIDs = config.monitors.map { $0.uuid }
-        if !pairedUUIDs.isEmpty {
-            let known = centralManager.retrievePeripherals(withIdentifiers: pairedUUIDs)
-            print("🔬 CFG: retrievePeripherals(withIdentifiers:) returned \(known.count)/\(pairedUUIDs.count) paired UUIDs:")
-            for p in known {
-                print("🔬 CFG:   • known peripheral name=\(p.name ?? "nil") uuid=\(p.identifier) state=\(p.state.rawValue)")
-            }
-            let missing = pairedUUIDs.filter { uuid in !known.contains(where: { $0.identifier == uuid }) }
-            for uuid in missing {
-                print("🔬 CFG:   • NOT known to CoreBluetooth: \(uuid)")
-            }
-        } else {
-            print("🔬 CFG: no paired monitors to query via retrievePeripherals")
-        }
-
-        let connected = centralManager.retrieveConnectedPeripherals(withServices: [heartRateServiceUUID])
-        print("🔬 CFG: retrieveConnectedPeripherals(withServices:[180D]) returned \(connected.count) device(s):")
-        for p in connected {
-            print("🔬 CFG:   • already-connected name=\(p.name ?? "nil") uuid=\(p.identifier) state=\(p.state.rawValue)")
-        }
 
         // Auto-stop after duration
         scanTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
@@ -293,7 +268,6 @@ class ConfigurationManager: NSObject, ObservableObject {
 
 extension ConfigurationManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        print("🔬 CFG: centralManagerDidUpdateState → \(central.state.rawValue) at \(Date())")
         bluetoothState = central.state
 
         switch central.state {
@@ -315,18 +289,10 @@ extension ConfigurationManager: CBCentralManagerDelegate {
                         didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any],
                         rssi RSSI: NSNumber) {
-        // 🔬 DIAGNOSTIC: log every callback BEFORE any guards drop it
-        let advLocalName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
         let isPairedUUID = config.monitors.contains { $0.uuid == peripheral.identifier }
-        print("🔬 CFG: didDiscover peripheral.name=\(peripheral.name ?? "nil") advLocalName=\(advLocalName ?? "nil") uuid=\(peripheral.identifier) rssi=\(RSSI) paired=\(isPairedUUID)")
 
         // Skip if no name
-        guard let name = peripheral.name, !name.isEmpty else {
-            if isPairedUUID {
-                print("🔬 CFG:   ⚠️ DROPPED paired device — name was nil/empty (this is one possible cause of false 'Offline')")
-            }
-            return
-        }
+        guard let name = peripheral.name, !name.isEmpty else { return }
 
         // Skip duplicates
         guard !discoveredDevices.contains(where: { $0.uuid == peripheral.identifier }) else { return }

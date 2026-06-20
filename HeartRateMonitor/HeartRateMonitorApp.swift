@@ -10,7 +10,7 @@ struct HeartRateMonitorApp: App {
 
     // Game state manager coordinates gameplay
     @StateObject private var gameStateManager: GameStateManager
-
+    
     init() {
         // Create single instances to be shared
         let espMgr = ESPPeripheralManager()

@@ -59,6 +59,29 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
             self.oscManager.sendBeat(forPlayer: self.id, bpm: UInt16(beatBPM))
         }
 
+        // ──────────────────────────────────────────────────────────────────
+        // OPTIONAL: drive the Arturia MiniFreak V audio unit on each heartbeat.
+        //
+        // What this does:
+        //   AUEngine hosts the MiniFreak V plugin in-process. This call fires
+        //   the player's locked pentatonic MIDI note (P1=C2 … P6=C5). If the
+        //   AU is paired with the hardware over USB, the hardware plays it too.
+        //
+        // It's gated by `UserDefaults.standard.bool(forKey: "EnableMiniFreakEngine")`.
+        // When that key is false (the default), this line is a near-zero-cost
+        // no-op — the engine never even loads.
+        //
+        // To turn it on (one-time, persists across launches):
+        //     UserDefaults.standard.set(true, forKey: "EnableMiniFreakEngine")
+        //   …or expose a Toggle in ConfigurationScreen bound to that key.
+        //
+        // To remove the integration entirely (go back to pure-Ableton routing):
+        //   1. Delete this single line below.
+        //   2. Delete AUEngine.swift.
+        // Nothing else in the app references the engine.
+        // ──────────────────────────────────────────────────────────────────
+        AUEngine.shared.noteOnIfEnabled(player: id)
+
         // Skip if no meaningful data to send or no change
         guard bpmToSend > 0 && bpmToSend != lastSentBPM else { return }
         //make sure that the bpm actually needs updating
