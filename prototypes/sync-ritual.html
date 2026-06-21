@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Resident Thrum — Coherence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --light:#EDEDED;     /* neutral white — strict greyscale */
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    background:#070707;
+    color:var(--light);
+    overflow:hidden;
+    font-family:"Space Grotesk", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    cursor:crosshair;
+  }
+  #stage{ position:fixed; inset:0; display:block; }
+
+  /* filmic grain — lifts the blacks with fine noise */
+  #grain{
+    position:fixed; inset:-20%; pointer-events:none;
+    opacity:.07; mix-blend-mode:screen; z-index:2;
+  }
+
+  .frame{ position:fixed; inset:0; pointer-events:none; z-index:3; }
+
+  /* both labels share one quiet, light treatment */
+  .mark{
+    position:absolute; left:30px; top:28px;
+    font-weight:500; font-size:13px; letter-spacing:.02em;
+    text-transform:uppercase; color:rgba(237,237,237,.80);
+  }
+  .mark small{
+    display:block; margin-top:7px;
+    font-family:"Space Mono", monospace; font-weight:400;
+    font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+    color:rgba(237,237,237,.30);
+  }
+
+  .state{
+    position:absolute; left:30px; bottom:28px;
+    font-weight:500; font-size:13px; letter-spacing:.02em;
+    text-transform:uppercase; color:rgba(237,237,237,.80);
+  }
+
+  .hint{
+    position:absolute; right:30px; bottom:30px; text-align:right;
+    font-family:"Space Mono", monospace;
+    font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+    color:rgba(237,237,237,.26);
+  }
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <svg id="grain" xmlns="http://www.w3.org/2000/svg">
+    <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/></filter>
+    <rect width="100%" height="100%" filter="url(#n)"/>
+  </svg>
+
+  <div class="frame">
+    <div class="mark">Resident Thrum<small>Coherence — Study vi</small></div>
+    <div class="state" id="word">Dispersed</div>
+  </div>
+
+<script>
+/* ===================================================================
+   RESIDENT THRUM — Coherence  (black-dominant, monotone light)
+   Six hearts at the vertices of a hexagon. Their beats are six phase-
+   oscillators coupled by the Kuramoto model — the real mathematics of
+   spontaneous synchronisation. As coupling rises they entrain; the order
+   parameter r (0..1) is the sync rate. Each pulse is soft light; where
+   the six overlap at the centre the light accumulates, so coherence
+   gathers as luminance. Structure is two triangles — no rings.
+   =================================================================== */
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d', { alpha:false });
+const wordEl = document.getElementById('word');
+const LIGHT = [237,237,237];  // neutral white — strict greyscale
+const lightA = a => 'rgba('+LIGHT[0]+','+LIGHT[1]+','+LIGHT[2]+','+a+')';
+
+let W, H, DPR, CX, CY, R, D;
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  CX = W/2; CY = H/2;
+  R = Math.min(W,H) * 0.15;       // hexagon circumradius (centre→vertex)
+  D = Math.sqrt(3) * R;           // tile centre→centre (shared-edge honeycomb)
+}
+window.addEventListener('resize', resize); resize();
+
+/* ---- six oscillators ------------------------------------------------ */
+const N = 6;
+const TAU = Math.PI*2;
+const osc = [];
+for(let i=0;i<N;i++){
+  osc.push({
+    ang:  -Math.PI/2 + i*TAU/N,
+    omega: TAU*(1.00 + (Math.random()*2-1)*0.10),
+    phase: Math.random()*TAU,
+    lastBeat: 0,
+    ripples: []
+  });
+}
+
+/* ---- coupling: a slow breath, plus the viewer's pull ---------------- */
+let K = 0.4;
+let pointer = {x:CX, y:CY, active:false};
+window.addEventListener('pointermove', e=>{ pointer.x=e.clientX; pointer.y=e.clientY; pointer.active=true; });
+window.addEventListener('pointerleave', ()=> pointer.active=false );
+window.addEventListener('pointerdown', ()=>{ for(const o of osc) o.phase += (Math.random()*2-1)*1.4; });
+
+/* ---- helpers -------------------------------------------------------- */
+const lerp  = (a,b,t)=> a+(b-a)*t;
+const clamp = (x,a,b)=> x<a?a:(x>b?b:x);
+const smooth= (a,b,x)=>{ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+// each player's tile centre sits one honeycomb step out from the middle
+function seatXY(o){ return [CX + Math.cos(o.ang)*D, CY + Math.sin(o.ang)*D]; }
+
+function coherence(){
+  let sx=0, sy=0;
+  for(const o of osc){ sx+=Math.cos(o.phase); sy+=Math.sin(o.phase); }
+  return { r: Math.hypot(sx,sy)/N, psi: Math.atan2(sy,sx) };
+}
+
+/* ---- simulation ----------------------------------------------------- */
+let t0 = performance.now()/1000, clock=0;
+function step(dt){
+  clock += dt;
+  const breath = (1 - Math.cos(clock * TAU/26))/2;
+  let target = lerp(0.25, 5.2, smooth(0,1,breath));
+  if(pointer.active){
+    const d = Math.hypot(pointer.x-CX, pointer.y-CY);
+    const pull = smooth(R*1.25, R*0.15, d);
+    target = Math.max(target, lerp(0.4, 6.5, pull));
+  }
+  K += (target - K) * Math.min(1, dt*1.6);
+
+  for(const o of osc){
+    let coupling = 0;
+    for(const p of osc) coupling += Math.sin(p.phase - o.phase);
+    o.phase += (o.omega + (K/N)*coupling) * dt;
+    const beat = Math.floor(o.phase/TAU);
+    if(beat > o.lastBeat){ o.lastBeat = beat; o.ripples.push({age:0}); }
+    for(const rp of o.ripples) rp.age += dt;
+    o.ripples = o.ripples.filter(rp=>rp.age < 2.2);
+  }
+}
+
+/* ---- painting ------------------------------------------------------- */
+function nightBackground(){
+  const g = ctx.createRadialGradient(CX,CY, R*0.1, CX,CY, Math.max(W,H)*0.7);
+  g.addColorStop(0, '#121212');   // centre, barely lifted (neutral)
+  g.addColorStop(1, '#050505');   // edges, near-black
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+}
+
+// one flat honeycomb hexagon (vertices at 60° steps; edges face the neighbours)
+function drawHex(cx, cy, rad, a){
+  ctx.strokeStyle = lightA(a);
+  ctx.lineWidth = 1; ctx.lineJoin='round';
+  ctx.beginPath();
+  for(let k=0;k<6;k++){
+    const ang = k*Math.PI/3;
+    const x = cx + Math.cos(ang)*rad, y = cy + Math.sin(ang)*rad;
+    k ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  }
+  ctx.closePath(); ctx.stroke();
+}
+
+// static structure: the centre tile + six tiles around it (7 total)
+function hexes(){
+  ctx.save();
+  drawHex(CX, CY, R, 0.12);
+  for(const o of osc){ const [x,y]=seatXY(o); drawHex(x, y, R, 0.12); }
+  ctx.restore();
+}
+
+function constellation(r){
+  ctx.save();
+  ctx.lineCap='round';
+  for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+    const align = (Math.cos(osc[i].phase - osc[j].phase)+1)/2;
+    const a = align*align * (0.08 + 0.45*r);
+    if(a < 0.02) continue;
+    const [x1,y1]=seatXY(osc[i]), [x2,y2]=seatXY(osc[j]);
+    ctx.strokeStyle = lightA(a*0.45);
+    ctx.lineWidth = 0.6 + align*r*1.0;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function heart(o){
+  const [x,y] = seatXY(o);
+  const c = (Math.cos(o.phase)+1)/2;
+  const pulse = Math.pow(c, 2.4);
+  // fixed reach (~one honeycomb step), so a peaking glow overlaps its
+  // neighbours and the centre tile. Only the pulse animates.
+  const rad = D * (0.45 + 0.70*pulse);
+
+  // soft additive glow — overlaps gather luminance into the middle
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x,y,0, x,y,rad);
+  g.addColorStop(0,   lightA(0.05 + 0.15*pulse));
+  g.addColorStop(0.5, lightA(0.02 + 0.06*pulse));
+  g.addColorStop(1,   lightA(0));
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,rad,0,TAU); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ---- state words (designer, plain language) ------------------------- */
+const STATES = [
+  [0.00,'Dispersed'],
+  [0.30,'Gathering'],
+  [0.55,'Entraining'],
+  [0.80,'Coherent'],
+  [0.955,'Unison'],
+];
+let curState = -1;
+function setState(r){
+  let idx=0; for(let i=0;i<STATES.length;i++) if(r>=STATES[i][0]) idx=i;
+  if(idx!==curState){ curState=idx; wordEl.textContent = STATES[idx][1]; }
+}
+
+/* ---- main loop ------------------------------------------------------ */
+function frame(now){
+  const tn = now/1000;
+  let dt = tn - t0; t0 = tn;
+  dt = Math.min(dt, 0.05);
+  step(dt);
+
+  const {r,psi} = coherence();
+
+  nightBackground();
+  hexes();
+  for(const o of osc) heart(o);
+  ctx.globalCompositeOperation='source-over';
+
+  setState(r);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
