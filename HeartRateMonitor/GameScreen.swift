@@ -10,6 +10,11 @@ struct GameScreen: View {
         ZStack {
             Palette.canvas.ignoresSafeArea()
 
+            // Reactive-only background — emerges only when the group's
+            // synchronization score crosses ~85%, peaks at ~95%.
+            SyncHaloBackground(synchronization: gameStateManager.calculateSynchronization())
+                .ignoresSafeArea()
+
             VStack(spacing: 24) {
                 header
 
@@ -73,20 +78,30 @@ struct GameScreen: View {
         let rows = stride(from: 0, to: players.count, by: cols).map { startIdx in
             Array(players[startIdx..<min(startIdx + cols, players.count)])
         }
-        return VStack(spacing: 20) {
-            ForEach(rows.indices, id: \.self) { rowIdx in
-                HStack(spacing: 20) {
-                    ForEach(rows[rowIdx]) { player in
-                        PlayerCardView(viewModel: player)
-                    }
-                    // Pad short last row so card widths stay uniform.
-                    if rows[rowIdx].count < cols {
-                        ForEach(0..<(cols - rows[rowIdx].count), id: \.self) { _ in
-                            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+        return ZStack {
+            // Constellation lines emerge between cards at the same threshold
+            // as the halo, layered behind the cards themselves.
+            SyncConstellationOverlay(
+                synchronization: gameStateManager.calculateSynchronization(),
+                columns: cols,
+                rows: rows.count
+            )
+
+            VStack(spacing: 20) {
+                ForEach(rows.indices, id: \.self) { rowIdx in
+                    HStack(spacing: 20) {
+                        ForEach(rows[rowIdx]) { player in
+                            PlayerCardView(viewModel: player)
+                        }
+                        // Pad short last row so card widths stay uniform.
+                        if rows[rowIdx].count < cols {
+                            ForEach(0..<(cols - rows[rowIdx].count), id: \.self) { _ in
+                                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
