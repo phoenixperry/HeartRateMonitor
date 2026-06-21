@@ -21,12 +21,14 @@
     -webkit-font-smoothing:antialiased;
     cursor:crosshair;
   }
-  #stage{ position:fixed; inset:0; display:block; }
+  /* #warp holds the scene + grain and receives the keystone (corner-pin) */
+  #warp{ position:fixed; top:0; left:0; transform-origin:0 0; z-index:1; }
+  #stage{ position:absolute; top:0; left:0; display:block; }
 
-  /* filmic grain — lifts the blacks with fine noise */
+  /* evolving film grain — a noise canvas regenerated ~24fps over everything */
   #grain{
-    position:fixed; inset:-20%; pointer-events:none;
-    opacity:.07; mix-blend-mode:screen; z-index:2;
+    position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;
+    opacity:.15; mix-blend-mode:soft-light;
   }
 
   .frame{ position:fixed; inset:0; pointer-events:none; z-index:3; }
@@ -50,27 +52,65 @@
     text-transform:uppercase; color:rgba(237,237,237,.80);
   }
 
-  .hint{
-    position:absolute; right:30px; bottom:30px; text-align:right;
-    font-family:"Space Mono", monospace;
-    font-size:10px; letter-spacing:.12em; text-transform:uppercase;
-    color:rgba(237,237,237,.26);
+  /* faint key legend (normal mode only) */
+  #keys{
+    position:fixed; right:30px; bottom:30px; z-index:3; text-align:right;
+    font-family:"Space Mono", monospace; font-size:9.5px; letter-spacing:.10em;
+    text-transform:uppercase; color:rgba(237,237,237,.22); pointer-events:none;
   }
+
+  /* ---- keystone calibration overlay ---- */
+  #handles{ position:fixed; inset:0; z-index:5; display:none; pointer-events:none; }
+  body.calibrate #handles{ display:block; }
+  .handle{
+    position:absolute; width:24px; height:24px; margin:-12px 0 0 -12px;
+    border:1.5px solid #6CC8FF; border-radius:50%;
+    background:rgba(108,200,255,.12); cursor:grab; pointer-events:auto;
+    box-shadow:0 0 0 1px rgba(0,0,0,.5);
+  }
+  .handle:active{ cursor:grabbing; }
+  .handle::after{
+    content:''; position:absolute; left:50%; top:50%; width:2px; height:2px;
+    margin:-1px 0 0 -1px; background:#6CC8FF;
+  }
+  #help{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:6;
+    display:none; font-family:"Space Mono", monospace; font-size:10px;
+    letter-spacing:.12em; text-transform:uppercase; color:rgba(108,200,255,.95);
+    background:rgba(0,0,0,.55); padding:9px 15px; border-radius:4px;
+  }
+  body.calibrate #help{ display:block; }
+
+  /* ---- projection mode: true black, no chrome ---- */
+  body.projection{ background:#000; }
+  body.projection .frame, body.projection #keys{ display:none; }
+
+  /* cursor: hidden in projection or when toggled off (H), but ALWAYS shown
+     while calibrating so you can grab the corners (last rule wins) */
+  body.projection, body.hidecursor{ cursor:none; }
+  body.calibrate{ cursor:crosshair; }
 </style>
 </head>
 <body>
-  <canvas id="stage"></canvas>
-
-  <svg id="grain" xmlns="http://www.w3.org/2000/svg">
-    <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
-      <feColorMatrix type="saturate" values="0"/></filter>
-    <rect width="100%" height="100%" filter="url(#n)"/>
-  </svg>
+  <div id="warp">
+    <canvas id="stage"></canvas>
+    <canvas id="grain"></canvas>
+  </div>
 
   <div class="frame">
     <div class="mark">Resident Thrum<small>Coherence — Study vi</small></div>
     <div class="state" id="word">Dispersed</div>
   </div>
+
+  <div id="keys">F&nbsp;fullscreen · P&nbsp;projection · C&nbsp;keystone · H&nbsp;cursor</div>
+
+  <div id="handles">
+    <div class="handle" data-i="0"></div>
+    <div class="handle" data-i="1"></div>
+    <div class="handle" data-i="2"></div>
+    <div class="handle" data-i="3"></div>
+  </div>
+  <div id="help">Drag the four corners onto the floor · R reset · H cursor · C exit</div>
 
 <script>
 /* ===================================================================
@@ -84,9 +124,75 @@
    =================================================================== */
 const cv = document.getElementById('stage');
 const ctx = cv.getContext('2d', { alpha:false });
+const grain = document.getElementById('grain');
+const gctx = grain.getContext('2d');
 const wordEl = document.getElementById('word');
 const LIGHT = [237,237,237];  // neutral white — strict greyscale
 const lightA = a => 'rgba('+LIGHT[0]+','+LIGHT[1]+','+LIGHT[2]+','+a+')';
+
+/* ---- keystone (corner-pin) + projection mode ------------------------
+   Keys:  F fullscreen · P projection (true black, no labels) · C keystone
+   In keystone mode drag the four corners onto the floor; R resets.
+   Corners persist in localStorage. Both modes coexist.                  */
+const warp = document.getElementById('warp');
+const handleEls = [...document.querySelectorAll('.handle')];
+let projection = false, calibrating = false;
+
+function loadCorners(){ try{ const s=localStorage.getItem('thrum.corners'); if(s) return JSON.parse(s); }catch(e){} return null; }
+function saveCorners(){ try{ localStorage.setItem('thrum.corners', JSON.stringify(corners)); }catch(e){} }
+// corners: TL, TR, BR, BL as fractions of the viewport (identity by default)
+let corners = loadCorners() || [[0,0],[1,0],[1,1],[0,1]];
+
+// 3x3 maths for the corner-pin homography → CSS matrix3d
+function adj(m){ return [
+  m[4]*m[8]-m[5]*m[7], m[2]*m[7]-m[1]*m[8], m[1]*m[5]-m[2]*m[4],
+  m[5]*m[6]-m[3]*m[8], m[0]*m[8]-m[2]*m[6], m[2]*m[3]-m[0]*m[5],
+  m[3]*m[7]-m[4]*m[6], m[1]*m[6]-m[0]*m[7], m[0]*m[4]-m[1]*m[3] ]; }
+function mulmm(a,b){ const c=[]; for(let i=0;i<3;i++)for(let j=0;j<3;j++){ let s=0;
+  for(let k=0;k<3;k++) s+=a[3*i+k]*b[3*k+j]; c[3*i+j]=s; } return c; }
+function mulmv(m,v){ return [ m[0]*v[0]+m[1]*v[1]+m[2]*v[2],
+  m[3]*v[0]+m[4]*v[1]+m[5]*v[2], m[6]*v[0]+m[7]*v[1]+m[8]*v[2] ]; }
+function basisToPoints(x1,y1,x2,y2,x3,y3,x4,y4){
+  const m=[x1,x2,x3, y1,y2,y3, 1,1,1];
+  const v=mulmv(adj(m),[x4,y4,1]);
+  return mulmm(m,[v[0],0,0, 0,v[1],0, 0,0,v[2]]);
+}
+function projectionFromQuads(s,d){ return mulmm(basisToPoints.apply(null,d), adj(basisToPoints.apply(null,s))); }
+
+function updateWarp(){
+  const s=[0,0, W,0, W,H, 0,H];
+  const d=[corners[0][0]*W,corners[0][1]*H, corners[1][0]*W,corners[1][1]*H,
+           corners[2][0]*W,corners[2][1]*H, corners[3][0]*W,corners[3][1]*H];
+  const t=projectionFromQuads(s,d);
+  for(let i=0;i<9;i++) t[i]/=t[8];
+  const m=[t[0],t[3],0,t[6], t[1],t[4],0,t[7], 0,0,1,0, t[2],t[5],0,t[8]];
+  warp.style.transform='matrix3d('+m.join(',')+')';
+}
+function positionHandles(){
+  // keep the grip fully on-screen (inset by a margin) so edge/bottom corners
+  // are always grabbable — the corner value itself is unclamped.
+  const m = 18;
+  handleEls.forEach((h,i)=>{
+    h.style.left = Math.max(m, Math.min(W-m, corners[i][0]*W))+'px';
+    h.style.top  = Math.max(m, Math.min(H-m, corners[i][1]*H))+'px';
+  });
+}
+handleEls.forEach((h,i)=>{
+  h.addEventListener('pointerdown', e=>{
+    e.preventDefault(); h.setPointerCapture(e.pointerId);
+    const move=ev=>{ corners[i]=[clamp(ev.clientX/W,-1,2), clamp(ev.clientY/H,-1,2)]; updateWarp(); positionHandles(); };
+    const up=()=>{ h.removeEventListener('pointermove',move); h.removeEventListener('pointerup',up); saveCorners(); };
+    h.addEventListener('pointermove',move); h.addEventListener('pointerup',up);
+  });
+});
+window.addEventListener('keydown', e=>{
+  const k=e.key.toLowerCase();
+  if(k==='f'){ document.fullscreenElement ? document.exitFullscreen?.() : document.documentElement.requestFullscreen?.(); }
+  else if(k==='p'){ projection=!projection; document.body.classList.toggle('projection',projection); }
+  else if(k==='c'){ calibrating=!calibrating; document.body.classList.toggle('calibrate',calibrating); if(calibrating) pointer.active=false; }
+  else if(k==='r'){ corners=[[0,0],[1,0],[1,1],[0,1]]; updateWarp(); positionHandles(); saveCorners(); }
+  else if(k==='h'){ document.body.classList.toggle('hidecursor'); }
+});
 
 let W, H, DPR, CX, CY, R, D;
 function resize(){
@@ -98,6 +204,11 @@ function resize(){
   CX = W/2; CY = H/2;
   R = Math.min(W,H) * 0.15;       // hexagon circumradius (centre→vertex)
   D = Math.sqrt(3) * R;           // tile centre→centre (shared-edge honeycomb)
+  // grain buffer at CSS resolution (independent of DPR) — fine filmic grain
+  grain.width = Math.max(2, Math.round(W * 0.7));
+  grain.height = Math.max(2, Math.round(H * 0.7));
+  warp.style.width = W+'px'; warp.style.height = H+'px';
+  updateWarp(); positionHandles();
 }
 window.addEventListener('resize', resize); resize();
 
@@ -118,7 +229,7 @@ for(let i=0;i<N;i++){
 /* ---- coupling: a slow breath, plus the viewer's pull ---------------- */
 let K = 0.4;
 let pointer = {x:CX, y:CY, active:false};
-window.addEventListener('pointermove', e=>{ pointer.x=e.clientX; pointer.y=e.clientY; pointer.active=true; });
+window.addEventListener('pointermove', e=>{ if(calibrating) return; pointer.x=e.clientX; pointer.y=e.clientY; pointer.active=true; });
 window.addEventListener('pointerleave', ()=> pointer.active=false );
 window.addEventListener('pointerdown', ()=>{ for(const o of osc) o.phase += (Math.random()*2-1)*1.4; });
 
@@ -161,9 +272,10 @@ function step(dt){
 
 /* ---- painting ------------------------------------------------------- */
 function nightBackground(){
+  if(projection){ ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H); return; } // true black for projector
   const g = ctx.createRadialGradient(CX,CY, R*0.1, CX,CY, Math.max(W,H)*0.7);
-  g.addColorStop(0, '#121212');   // centre, barely lifted (neutral)
-  g.addColorStop(1, '#050505');   // edges, near-black
+  g.addColorStop(0, '#1B1B1D');   // lifted off pure black — gentler contrast
+  g.addColorStop(1, '#0F0F11');
   ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 }
 
@@ -183,8 +295,8 @@ function drawHex(cx, cy, rad, a){
 // static structure: the centre tile + six tiles around it (7 total)
 function hexes(){
   ctx.save();
-  drawHex(CX, CY, R, 0.12);
-  for(const o of osc){ const [x,y]=seatXY(o); drawHex(x, y, R, 0.12); }
+  drawHex(CX, CY, R, 0.05);
+  for(const o of osc){ const [x,y]=seatXY(o); drawHex(x, y, R, 0.05); }
   ctx.restore();
 }
 
@@ -205,19 +317,25 @@ function constellation(r){
 
 function heart(o){
   const [x,y] = seatXY(o);
-  const c = (Math.cos(o.phase)+1)/2;
-  const pulse = Math.pow(c, 2.4);
-  // fixed reach (~one honeycomb step), so a peaking glow overlaps its
-  // neighbours and the centre tile. Only the pulse animates.
-  const rad = D * (0.45 + 0.70*pulse);
+  const maxReach = D * 1.35;   // each circle travels past the centre tile
 
-  // soft additive glow — overlaps gather luminance into the middle
-  ctx.globalCompositeOperation = 'lighter';
-  const g = ctx.createRadialGradient(x,y,0, x,y,rad);
-  g.addColorStop(0,   lightA(0.05 + 0.15*pulse));
-  g.addColorStop(0.5, lightA(0.02 + 0.06*pulse));
-  g.addColorStop(1,   lightA(0));
-  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,rad,0,TAU); ctx.fill();
+  // one soft circle per beat, expanding OUTWARD and fading — no in-place
+  // pulse. 'screen' (not additive) so overlaps blend gently instead of
+  // blowing out to harsh white.
+  ctx.globalCompositeOperation = 'screen';
+  for(const rp of o.ripples){
+    const tt = clamp(rp.age/2.2, 0, 1);
+    const rr = tt * maxReach;
+    if(rr < 1) continue;
+    const a = smooth(0,0.10,tt) * (1-tt)*(1-tt) * 0.16; // fade in fast, out slow
+    const width = lerp(8, 30, tt);                      // softens as it grows
+    const inner = Math.max(0, rr - width), outer = rr + width;
+    const g = ctx.createRadialGradient(x,y,inner, x,y,outer);
+    g.addColorStop(0,   lightA(0));
+    g.addColorStop(0.5, lightA(a));
+    g.addColorStop(1,   lightA(0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x,y,outer,0,TAU); ctx.fill();
+  }
   ctx.globalCompositeOperation = 'source-over';
 }
 
@@ -235,6 +353,20 @@ function setState(r){
   if(idx!==curState){ curState=idx; wordEl.textContent = STATES[idx][1]; }
 }
 
+/* ---- evolving film grain -------------------------------------------- */
+let lastGrain = 0;
+function filmGrain(now){
+  if(now - lastGrain < 1000/24) return;   // ~24fps: film cadence, gentler than 60
+  lastGrain = now;
+  const img = gctx.createImageData(grain.width, grain.height);
+  const d = img.data;
+  for(let i=0;i<d.length;i+=4){
+    const v = (Math.random()*255)|0;      // monochrome noise
+    d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+  }
+  gctx.putImageData(img, 0, 0);
+}
+
 /* ---- main loop ------------------------------------------------------ */
 function frame(now){
   const tn = now/1000;
@@ -250,6 +382,7 @@ function frame(now){
   ctx.globalCompositeOperation='source-over';
 
   setState(r);
+  filmGrain(now);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
