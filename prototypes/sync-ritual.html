@@ -22,7 +22,7 @@
     cursor:crosshair;
   }
   /* #warp holds the scene + grain and receives the keystone (corner-pin) */
-  #warp{ position:fixed; top:0; left:0; transform-origin:0 0; z-index:1; }
+  #warp{ position:fixed; top:0; left:0; transform-origin:0 0; z-index:1; transition:opacity .6s ease; }
   #stage{ position:absolute; top:0; left:0; display:block; }
 
   /* evolving film grain — a noise canvas regenerated ~24fps over everything */
@@ -81,9 +81,10 @@
   }
   body.calibrate #help{ display:block; }
 
-  /* ---- projection mode: true black, no chrome ---- */
+  /* ---- projection / fullscreen: true black, pure visuals, no chrome ---- */
   body.projection{ background:#000; }
-  body.projection .frame, body.projection #keys{ display:none; }
+  body.projection .frame, body.projection #keys,
+  body.fullscreen .frame, body.fullscreen #keys{ display:none; }
 
   /* cursor: hidden in projection or when toggled off (H), but ALWAYS shown
      while calibrating so you can grab the corners (last rule wins) */
@@ -102,7 +103,7 @@
     <div class="state" id="word">Dispersed</div>
   </div>
 
-  <div id="keys">F&nbsp;fullscreen · P&nbsp;projection · C&nbsp;keystone · H&nbsp;cursor</div>
+  <div id="keys">F&nbsp;fullscreen · P&nbsp;projection · C&nbsp;keystone · H&nbsp;cursor · 0–9&nbsp;opacity · [&nbsp;]&nbsp;look</div>
 
   <div id="handles">
     <div class="handle" data-i="0"></div>
@@ -129,6 +130,15 @@ const gctx = grain.getContext('2d');
 const wordEl = document.getElementById('word');
 const LIGHT = [237,237,237];  // neutral white — strict greyscale
 const lightA = a => 'rgba('+LIGHT[0]+','+LIGHT[1]+','+LIGHT[2]+','+a+')';
+
+/* ---- look presets — edit values / add more; switch live with [ and ] ----
+   hex    = honeycomb understructure line opacity
+   circle = peak opacity of each expanding glow                              */
+const PRESETS = [
+  { hex: 0.05, circle: 0.16 },   // 0 — original (subtle hex, softer glow)
+  { hex: 0.10, circle: 0.22 },   // 1 — brighter (current)
+];
+let preset = 1;                   // active preset index
 
 /* ---- keystone (corner-pin) + projection mode ------------------------
    Keys:  F fullscreen · P projection (true black, no labels) · C keystone
@@ -192,6 +202,13 @@ window.addEventListener('keydown', e=>{
   else if(k==='c'){ calibrating=!calibrating; document.body.classList.toggle('calibrate',calibrating); if(calibrating) pointer.active=false; }
   else if(k==='r'){ corners=[[0,0],[1,0],[1,1],[0,1]]; updateWarp(); positionHandles(); saveCorners(); }
   else if(k==='h'){ document.body.classList.toggle('hidecursor'); }
+  else if(k>='0' && k<='9'){ warp.style.opacity = (Number(k)+1)/10; }  // 0=10% (dimmest) … 9=100%
+  else if(k==='['){ preset = (preset - 1 + PRESETS.length) % PRESETS.length; }  // prev look
+  else if(k===']'){ preset = (preset + 1) % PRESETS.length; }                   // next look
+});
+// fullscreen → pure visuals (hide title, words, key legend)
+document.addEventListener('fullscreenchange', ()=>{
+  document.body.classList.toggle('fullscreen', !!document.fullscreenElement);
 });
 
 let W, H, DPR, CX, CY, R, D;
@@ -295,8 +312,9 @@ function drawHex(cx, cy, rad, a){
 // static structure: the centre tile + six tiles around it (7 total)
 function hexes(){
   ctx.save();
-  drawHex(CX, CY, R, 0.05);
-  for(const o of osc){ const [x,y]=seatXY(o); drawHex(x, y, R, 0.05); }
+  const hx = PRESETS[preset].hex;
+  drawHex(CX, CY, R, hx);
+  for(const o of osc){ const [x,y]=seatXY(o); drawHex(x, y, R, hx); }
   ctx.restore();
 }
 
@@ -327,7 +345,7 @@ function heart(o){
     const tt = clamp(rp.age/2.2, 0, 1);
     const rr = tt * maxReach;
     if(rr < 1) continue;
-    const a = smooth(0,0.10,tt) * (1-tt)*(1-tt) * 0.16; // fade in fast, out slow
+    const a = smooth(0,0.10,tt) * (1-tt)*(1-tt) * PRESETS[preset].circle; // fade in fast, out slow
     const width = lerp(8, 30, tt);                      // softens as it grows
     const inner = Math.max(0, rr - width), outer = rr + width;
     const g = ctx.createRadialGradient(x,y,inner, x,y,outer);
