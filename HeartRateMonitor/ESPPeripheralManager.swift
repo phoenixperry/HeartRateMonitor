@@ -58,6 +58,13 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         writeCommand("K:\(id)", withResponse: false)
         print("🥁 Fire haptics for player \(id)")
     }
+
+    /// Tell the hardware the experience is over. Global (no player id).
+    /// Firmware branch: cmd.rfind("D:", 0) == 0
+    func sendDone(){
+        writeCommand("D:0", withResponse: false)
+        print("🏁 Sent done state to ESP32")
+    }
     
     //not using this right now
     func sendGroupBPMs(_ playerBPMs:[(playerID:Int, bpm:Int)]){

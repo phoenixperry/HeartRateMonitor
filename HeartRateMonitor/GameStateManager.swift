@@ -201,6 +201,7 @@ class GameStateManager: ObservableObject {
         currentState = .finished
         simulationProvider?.stop()
         researchLogger.endSession()
+        espManager.sendDone()
     }
 
     // Reset everything to beginning. Crucially we do *not* BLE-disconnect
