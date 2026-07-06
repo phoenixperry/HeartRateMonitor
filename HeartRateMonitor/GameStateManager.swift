@@ -208,9 +208,9 @@ class GameStateManager: ObservableObject {
                 let grid = (nowD.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: d)) / d
                 var err = grid - phase
                 if err > 0.5 { err -= 1 } else if err < -0.5 { err += 1 }
-                phase += min(0.05, max(-0.05, err * 0.5))  // ease onto the shared grid
-                if phase < 0 { phase += 1 }
-                if phase >= 1 { phase -= 1 }
+                // Ease onto the shared grid; floor at 0 (rest at the min, never
+                // cross the wrap backwards — see WaveformBreathingCircle).
+                phase = max(0.0, phase + min(0.05, max(-0.05, err * 0.5)))
             }
             envBPM[player.id] = bpm
             envPhase[player.id] = phase

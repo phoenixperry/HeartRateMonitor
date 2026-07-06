@@ -107,9 +107,10 @@ struct WaveformBreathingCircle: View {
         let grid = (date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: d)) / d
         var err = grid - progress
         if err > 0.5 { err -= 1 } else if err < -0.5 { err += 1 }
-        progress += min(0.05, max(-0.05, err * 0.5))
-        if progress < 0 { progress += 1 }
-        if progress >= 1 { progress -= 1 }
+        // Floor at 0: a backward correction becomes a brief rest at the min,
+        // never a wrap-crossing (crossing re-wraps next tick and re-pulls — a
+        // flutter loop that read as the circle hanging after a BPM change).
+        progress = max(0.0, progress + min(0.05, max(-0.05, err * 0.5)))
     }
 
     private func scale(for progress: Double) -> CGFloat {
