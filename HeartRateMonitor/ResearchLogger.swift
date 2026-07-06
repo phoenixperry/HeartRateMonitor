@@ -202,7 +202,7 @@ class ResearchLogger {
         for i in 1...6 {
             header += ",player\(i)_bpm"
         }
-        header += ",sync_score,player_count_active\n"
+        header += ",sync_score,player_count_active,stimulus_condition\n"
 
         writeLine(header)
     }
@@ -234,7 +234,7 @@ class ResearchLogger {
             }
         }
 
-        row += ",\(String(format: "%.1f", dataPoint.syncScore)),\(dataPoint.activePlayerCount)\n"
+        row += ",\(String(format: "%.1f", dataPoint.syncScore)),\(dataPoint.activePlayerCount),\(dataPoint.stimulusCondition)\n"
 
         writeLine(row)
         recordCount += 1
@@ -280,4 +280,10 @@ struct LogDataPoint {
     let playerBPMs: [Int]      // BPM for each player (0 if disconnected)
     let syncScore: Double       // Current synchronization score
     let activePlayerCount: Int  // Number of currently connected players
+    // What was driving the haptic stimulus this second (for correlating
+    // coherence onset with what the motors were actually doing):
+    //   "streaming"   — app was sending V: envelope frames (motors mirror circles)
+    //   "local-synth" — ESP connected, firmware synthesizing from S:/K:
+    //   "no-haptics"  — ESP not connected, no haptic stimulus at all
+    var stimulusCondition: String = "unknown"
 }

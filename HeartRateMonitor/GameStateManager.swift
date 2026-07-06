@@ -214,7 +214,19 @@ class GameStateManager: ObservableObject {
                 let bpms = self.players.map { $0.heartRate }
                 let syncScore = self.calculateSynchronization()
                 let activeCount = self.connectedPlayerCount
-                return LogDataPoint(playerBPMs: bpms, syncScore: syncScore, activePlayerCount: activeCount)
+                // Record what was driving the haptic stimulus this second, so
+                // coherence onset can be correlated with the actual stimulus.
+                let stimulus: String
+                if !self.espManager.isConnected {
+                    stimulus = "no-haptics"
+                } else if self.envelopeTimer != nil {
+                    stimulus = "streaming"
+                } else {
+                    stimulus = "local-synth"
+                }
+                return LogDataPoint(playerBPMs: bpms, syncScore: syncScore,
+                                    activePlayerCount: activeCount,
+                                    stimulusCondition: stimulus)
             }
         }
     }

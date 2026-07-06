@@ -13,6 +13,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     @Published var currentScale:CGFloat = 1.0
 
     private var lastSentBPM: Int = 0
+    private var lastCycleAt: Date? = nil   // dedup: one beat per breathing cycle
     private let oscQueue = DispatchQueue(label: "oscQueue", qos: .userInitiated)
     private let bluetoothQueue = DispatchQueue(label: "bluetoothQueue", qos: .userInitiated)
 
@@ -47,6 +48,14 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     func cycleDidComplete() {
         //Only process if player is actively in play mode
         guard hasStartedPlay, isConnected else { return }
+        // One beat per breathing cycle, whichever clock fires first. TWO paths
+        // call this for simulated players — the circle view's onCycleComplete
+        // AND updateSimulatedBPM (which fires on every sim tick / BPM change).
+        // Unguarded, the second clock doubled every K:, OSC beat, and note.
+        let period = 60.0 / Double(max(heartRate, 1))
+        let nowT = Date()
+        if let last = lastCycleAt, nowT.timeIntervalSince(last) < period * 0.6 { return }
+        lastCycleAt = nowT
         // Capture value once to ensure consistency
         let bpmToSend = heartRate
         sendHapticsToESP(id)
