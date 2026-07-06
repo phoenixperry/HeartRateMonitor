@@ -16,7 +16,7 @@ struct WaveformBreathingCircle: View {
     @State private var currentBPM: Int = 0
     @State private var pendingBPM: Int? = nil
     @State private var progress: Double = 0
-    @State private var hasTriggeredCycle = false
+    @State private var lastTick: Date? = nil
 
     // MARK: - Animation config
 
@@ -61,7 +61,6 @@ struct WaveformBreathingCircle: View {
             // jump straight to the real BPM.
             if currentBPM <= 1 && newBPM > 1 {
                 currentBPM = newBPM
-                hasTriggeredCycle = false
             } else {
                 // Normal case mid-session: defer to end of current cycle so
                 // the visual doesn't jump.
@@ -80,22 +79,37 @@ struct WaveformBreathingCircle: View {
     }
 
     private func updateProgress(_ date: Date) {
-        // Phase is derived from absolute time (timeIntervalSinceReferenceDate)
-        // rather than a per-circle anchor. That means any two circles running
-        // at the same BPM in the same frame compute the same phase — so
-        // same-BPM players automatically lock into sync, no coordinator
-        // needed. Phase only diverges when their cycleDuration (= 60/BPM)
-        // diverges.
-        let duration = cycleDuration(for: currentBPM)
-        let elapsed = date.timeIntervalSinceReferenceDate
-        progress = (elapsed.truncatingRemainder(dividingBy: duration)) / duration
+        // The phase ACCUMULATES (+= dt/duration) instead of being re-derived
+        // from absolute time mod duration each frame. The old derivation
+        // teleported the ring to an arbitrary phase whenever currentBPM
+        // changed — (elapsed mod newDuration) has no relation to (elapsed mod
+        // oldDuration) — which read as a stutter on every BPM shift even
+        // though the tempo application itself was deferred. Now the breath is
+        // continuous by construction: tempo AND the grid re-sync below happen
+        // ONLY at the cycle min, never mid-breath.
+        let dt = lastTick.map { date.timeIntervalSince($0) } ?? 0
+        lastTick = date
+        guard dt > 0, dt < 0.25 else { return }   // first tick / app hiccup
 
-        if progress < 0.05 && !hasTriggeredCycle {
-            hasTriggeredCycle = true
-            cycleCompleted(at: date)
-        } else if progress > 0.1 {
-            hasTriggeredCycle = false
-        }
+        progress += dt / cycleDuration(for: currentBPM)
+        guard progress >= 1 else { return }
+
+        // ---- Cycle min: the only place anything may shift ----
+        progress -= floor(progress)
+        cycleCompleted(at: date)      // fires the beat + applies pendingBPM
+
+        // Grid pull: same-BPM circles used to lock into sync automatically
+        // because phase came from shared absolute time. Keep that property by
+        // easing each circle onto that shared grid — close at most half the
+        // gap, capped at 5% of a cycle, and only here at the min where the
+        // ring sits within ~2% of rest, so the nudge is invisible.
+        let d = cycleDuration(for: currentBPM)
+        let grid = (date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: d)) / d
+        var err = grid - progress
+        if err > 0.5 { err -= 1 } else if err < -0.5 { err += 1 }
+        progress += min(0.05, max(-0.05, err * 0.5))
+        if progress < 0 { progress += 1 }
+        if progress >= 1 { progress -= 1 }
     }
 
     private func scale(for progress: Double) -> CGFloat {

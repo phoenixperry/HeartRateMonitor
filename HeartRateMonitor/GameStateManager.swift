@@ -46,6 +46,13 @@ class GameStateManager: ObservableObject {
 
     // Envelope streaming (V: frames to the hardware, ~30 Hz)
     private var envelopeTimer: Timer? = nil
+    // Per-player phase state — mirrors WaveformBreathingCircle's timing model
+    // (accumulated phase, tempo applied only at the cycle min, gentle pull
+    // onto the shared absolute-time grid) so haptics and visuals stay locked
+    // without coupling to any view's lifecycle.
+    private var envPhase: [Int: Double] = [:]
+    private var envBPM: [Int: Int] = [:]
+    private var envLastTick: Date? = nil
 
     // For tracking state changes
     private var cancellables = Set<AnyCancellable>()
@@ -163,6 +170,9 @@ class GameStateManager: ObservableObject {
     // stopped by endGame()/resetGame().
     private func startEnvelopeStreaming() {
         stopEnvelopeStreaming()
+        envPhase = [:]
+        envBPM = [:]
+        envLastTick = nil
         envelopeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             self?.sendEnvelopeFrame()
         }
@@ -174,16 +184,38 @@ class GameStateManager: ObservableObject {
     }
 
     private func sendEnvelopeFrame() {
-        let elapsed = Date().timeIntervalSinceReferenceDate
+        let nowD = Date()
+        let dt = envLastTick.map { nowD.timeIntervalSince($0) } ?? 0
+        envLastTick = nowD
+        guard dt > 0, dt < 0.25 else { return }   // first tick / timer hiccup
+
         var values = [Int](repeating: 0, count: 6)   // absent players stay 0
         for player in players
         where player.hasStartedPlay && player.isConnected && player.heartRate > 0 {
             let slot = player.id - 1
             guard (0..<6).contains(slot) else { continue }
-            // WaveformBreathingCircle.scale(for:) normalised to 0..1.
-            let duration = 60.0 / Double(player.heartRate)
-            let progress = elapsed.truncatingRemainder(dividingBy: duration) / duration
-            let env01 = (sin(2 * Double.pi * progress - .pi / 2) + 1) / 2
+
+            // Accumulated phase, exactly like the circle: the tempo (and the
+            // grid re-sync) may only change at the cycle min — a BPM arriving
+            // mid-cycle must never jump the envelope (it stutters the motor).
+            var bpm = envBPM[player.id] ?? player.heartRate
+            var phase = envPhase[player.id] ?? 0
+            phase += dt * Double(bpm) / 60.0
+            if phase >= 1 {
+                phase -= floor(phase)
+                bpm = player.heartRate                 // tempo shifts at the min
+                let d = 60.0 / Double(max(bpm, 1))
+                let grid = (nowD.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: d)) / d
+                var err = grid - phase
+                if err > 0.5 { err -= 1 } else if err < -0.5 { err += 1 }
+                phase += min(0.05, max(-0.05, err * 0.5))  // ease onto the shared grid
+                if phase < 0 { phase += 1 }
+                if phase >= 1 { phase -= 1 }
+            }
+            envBPM[player.id] = bpm
+            envPhase[player.id] = phase
+
+            let env01 = (sin(2 * Double.pi * phase - .pi / 2) + 1) / 2
             values[slot] = Int((env01 * 100).rounded())
         }
         espManager.sendEnvelope(values)
