@@ -80,6 +80,19 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         writeCommand("D:0", withResponse: false)
         print("🏁 Sent done state to ESP32")
     }
+
+    /// Pause the hardware: motors off within one frame, strip settles to the
+    /// resting glow. Sticky on the firmware side — stray S:/K: can't unpause.
+    func sendPause(){
+        writeCommand("P:0", withResponse: false)
+        print("⏸️ Sent pause to ESP32")
+    }
+
+    /// Resume the hardware from pause.
+    func sendResume(){
+        writeCommand("R:0", withResponse: false)
+        print("▶️ Sent resume to ESP32")
+    }
     
     //not using this right now
     func sendGroupBPMs(_ playerBPMs:[(playerID:Int, bpm:Int)]){

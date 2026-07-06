@@ -213,6 +213,14 @@ class ResearchLogger {
         writeLine(header)
     }
 
+    /// Log a discrete session event (pause, resume, …) as a comment row so
+    /// analysis can segment the 1 Hz samples around it. No-op if no session
+    /// file is open.
+    func logEvent(_ name: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        writeLine("# EVENT,\(timestamp),\(name)\n")
+    }
+
     private func writeSessionFooter(finalSync: Double) {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let duration = elapsedSeconds

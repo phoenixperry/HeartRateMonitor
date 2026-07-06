@@ -14,6 +14,8 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
     private var lastSentBPM: Int = 0
     private var lastCycleAt: Date? = nil   // dedup: one beat per breathing cycle
+    var isGamePaused: Bool = false         // set by GameStateManager on pause/resume:
+                                           // gates ALL per-beat output (K:, OSC, MIDI)
     private let oscQueue = DispatchQueue(label: "oscQueue", qos: .userInitiated)
     private let bluetoothQueue = DispatchQueue(label: "bluetoothQueue", qos: .userInitiated)
 
@@ -46,8 +48,9 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     }
 
     func cycleDidComplete() {
-        //Only process if player is actively in play mode
-        guard hasStartedPlay, isConnected else { return }
+        //Only process if player is actively in play mode (and not paused —
+        //a K: leaking through during pause would also confuse the firmware)
+        guard hasStartedPlay, isConnected, !isGamePaused else { return }
         // One beat per breathing cycle, whichever clock fires first. TWO paths
         // call this for simulated players — the circle view's onCycleComplete
         // AND updateSimulatedBPM (which fires on every sim tick / BPM change).

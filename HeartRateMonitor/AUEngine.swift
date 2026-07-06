@@ -114,6 +114,14 @@ final class AUEngine {
         sendNoteOn(player: player)
     }
 
+    /// Master mute for game pause: output volume to 0 and silence anything
+    /// already ringing. Safe to call whether or not the engine ever started
+    /// (a never-started engine's mixer just holds the value for later).
+    func setMuted(_ muted: Bool) {
+        engine.mainMixerNode.outputVolume = muted ? 0 : 1
+        if muted && hasStarted { allNotesOff() }
+    }
+
     /// Fire an arbitrary MIDI note now, ignoring the per-player map.
     /// Used by the Sound Designer screen so each player row's "test"
     /// button can audition exactly what that player will play.

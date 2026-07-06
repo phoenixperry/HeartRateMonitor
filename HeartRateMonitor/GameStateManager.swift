@@ -263,15 +263,23 @@ class GameStateManager: ObservableObject {
         }
     }
 
-    // Pause the game
+    // Pause the game: motors off (firmware P: state), all per-beat output
+    // gated (K:/OSC/MIDI), envelope stream stopped, sound muted, and the
+    // pause recorded in the research log so analysis can segment around it.
     func pauseGame() {
         guard currentState == .playing else { return }
         pauseStartTime = Date()
         currentState = .paused
+        researchLogger.logEvent("pause")
         researchLogger.pauseSession()
+        stopEnvelopeStreaming()
+        players.forEach { $0.isGamePaused = true }   // gate K:/OSC/MIDI beats
+        espManager.sendPause()                       // motors off within a frame
+        AUEngine.shared.setMuted(true)               // volume 0 + notes off
     }
 
-    // Resume the game
+    // Resume the game: unmute, un-gate the beats, restart the envelope
+    // stream, and wake the hardware (firmware R: exits its pause state).
     func resumeGame() {
         guard currentState == .paused else { return }
         if let pauseStart = pauseStartTime {
@@ -279,7 +287,12 @@ class GameStateManager: ObservableObject {
             pauseStartTime = nil
         }
         currentState = .playing
+        AUEngine.shared.setMuted(false)
+        espManager.sendResume()
+        players.forEach { $0.isGamePaused = false }
+        startEnvelopeStreaming()
         researchLogger.resumeSession()
+        researchLogger.logEvent("resume")
     }
 
     // End the game
