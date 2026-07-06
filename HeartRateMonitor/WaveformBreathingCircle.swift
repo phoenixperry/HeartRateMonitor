@@ -91,26 +91,14 @@ struct WaveformBreathingCircle: View {
         lastTick = date
         guard dt > 0, dt < 0.25 else { return }   // first tick / app hiccup
 
-        progress += dt / cycleDuration(for: currentBPM)
+        progress += dt / cycleDuration(for: currentBPM)   // speed × dt
         guard progress >= 1 else { return }
 
-        // ---- Cycle min: the only place anything may shift ----
+        // ---- The wrap: the only place speed may change ----
         progress -= floor(progress)
         cycleCompleted(at: date)      // fires the beat + applies pendingBPM
-
-        // Grid pull: same-BPM circles used to lock into sync automatically
-        // because phase came from shared absolute time. Keep that property by
-        // easing each circle onto that shared grid — close at most half the
-        // gap, capped at 5% of a cycle, and only here at the min where the
-        // ring sits within ~2% of rest, so the nudge is invisible.
-        let d = cycleDuration(for: currentBPM)
-        let grid = (date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: d)) / d
-        var err = grid - progress
-        if err > 0.5 { err -= 1 } else if err < -0.5 { err += 1 }
-        // Floor at 0: a backward correction becomes a brief rest at the min,
-        // never a wrap-crossing (crossing re-wraps next tick and re-pulls — a
-        // flutter loop that read as the circle hanging after a BPM change).
-        progress = max(0.0, progress + min(0.05, max(-0.05, err * 0.5)))
+        // No grid pull, no cross-circle coupling: the player's BPM is the
+        // only thing that steers this circle, exactly like their motor.
     }
 
     private func scale(for progress: Double) -> CGFloat {

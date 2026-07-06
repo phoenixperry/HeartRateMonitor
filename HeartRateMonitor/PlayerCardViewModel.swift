@@ -156,6 +156,12 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
             }
         }
 
+        // Physical strap death (BLE drop) — same handling as the Disconnect
+        // button: clear state and stop this player's motor immediately.
+        heartRateManager?.onDisconnect = { [weak self] in
+            self?.disconnect()
+        }
+
         heartRateManager?.onHeartRateUpdate = { [weak self] bpm in
             guard let self = self else { return }
 
@@ -192,6 +198,14 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
 
     func disconnect() {
         guard !isSimulated else { return }
+
+        // Stop this player's motor NOW — S:<id>:0 is the firmware stop command
+        // (monitor and motor are twins). Sent first so the tile falls silent
+        // even if UI state teardown lags.
+        bluetoothQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.espManager.sendTempo(id: self.id, bpm: 0)
+        }
 
         heartRateManager?.disconnectCurrentPeripheral()
 

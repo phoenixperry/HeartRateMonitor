@@ -31,6 +31,7 @@ class HeartRateManager: NSObject, ObservableObject {
     // MARK: - External event hooks
     var onConnect: (() -> Void)?
     var onHeartRateUpdate: ((UInt16) -> Void)?
+    var onDisconnect: (() -> Void)?   // fired on a BLE-level drop (strap off/died)
 
     // MARK: - Init
     override init() {
@@ -211,6 +212,10 @@ extension HeartRateManager: CBCentralManagerDelegate {
             self.connected = "Connected: NO"
             self.isConnected = false
             self.heartRate = 0
+            // Tell the owning view model: without this, a physical strap death
+            // left the player looking connected and the motor running on the
+            // last BPM. Hardware and monitor must be twins.
+            self.onDisconnect?()
         }
     }
 }

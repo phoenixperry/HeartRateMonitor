@@ -195,22 +195,15 @@ class GameStateManager: ObservableObject {
             let slot = player.id - 1
             guard (0..<6).contains(slot) else { continue }
 
-            // Accumulated phase, exactly like the circle: the tempo (and the
-            // grid re-sync) may only change at the cycle min — a BPM arriving
-            // mid-cycle must never jump the envelope (it stutters the motor).
+            // Accumulated phase, exactly like the circle and the motor:
+            // speed = bpm/60 multiplied in each tick; speed changes apply
+            // only at the wrap. No grid, no cross-player coupling.
             var bpm = envBPM[player.id] ?? player.heartRate
             var phase = envPhase[player.id] ?? 0
             phase += dt * Double(bpm) / 60.0
             if phase >= 1 {
                 phase -= floor(phase)
-                bpm = player.heartRate                 // tempo shifts at the min
-                let d = 60.0 / Double(max(bpm, 1))
-                let grid = (nowD.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: d)) / d
-                var err = grid - phase
-                if err > 0.5 { err -= 1 } else if err < -0.5 { err += 1 }
-                // Ease onto the shared grid; floor at 0 (rest at the min, never
-                // cross the wrap backwards — see WaveformBreathingCircle).
-                phase = max(0.0, phase + min(0.05, max(-0.05, err * 0.5)))
+                bpm = player.heartRate                 // speed shifts at the wrap
             }
             envBPM[player.id] = bpm
             envPhase[player.id] = phase
