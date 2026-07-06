@@ -59,6 +59,21 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         print("🥁 Fire haptics for player \(id)")
     }
 
+    /// Stream one breathing-envelope frame for all six players (values 0-100),
+    /// ~30 Hz. Deliberately quiet — per-frame logging would flood the console.
+    /// Drops the frame if CoreBluetooth's write-without-response buffer is full:
+    /// envelope frames are ephemeral and the next one supersedes it anyway.
+    /// Firmware branch: cmd.rfind("V:", 0) == 0
+    func sendEnvelope(_ values: [Int]) {
+        guard let peripheral = espPeripheral,
+              let characteristic = bpmCharacteristic,
+              peripheral.state == .connected,
+              peripheral.canSendWriteWithoutResponse,
+              let data = "V:\(values.map(String.init).joined(separator: ","))".data(using: .utf8)
+        else { return }
+        peripheral.writeValue(data, for: characteristic, type: .withoutResponse)
+    }
+
     /// Tell the hardware the experience is over. Global (no player id).
     /// Firmware branch: cmd.rfind("D:", 0) == 0
     func sendDone(){

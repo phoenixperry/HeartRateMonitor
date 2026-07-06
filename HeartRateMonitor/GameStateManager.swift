@@ -44,6 +44,9 @@ class GameStateManager: ObservableObject {
     private var pauseStartTime: Date? = nil
     @Published var totalPausedTime: TimeInterval = 0
 
+    // Envelope streaming (V: frames to the hardware, ~30 Hz)
+    private var envelopeTimer: Timer? = nil
+
     // For tracking state changes
     private var cancellables = Set<AnyCancellable>()
 
@@ -148,6 +151,44 @@ class GameStateManager: ObservableObject {
             .store(in: &cancellables)
     }
 
+    // MARK: - Envelope streaming (V: frames)
+
+    // Stream every player's breathing-circle value to the hardware at ~30 Hz
+    // ("V:<v1>,...,<v6>", 0-100 per slot) so the motors mirror the visuals
+    // exactly. The values are recomputed here with the SAME math as
+    // WaveformBreathingCircle: the circle's phase is pure absolute-time + BPM
+    // (deliberately, so any two circles at one BPM agree), which means this
+    // sampler produces the identical envelope without touching any view.
+    // Runs through pause (haptics already keep breathing while paused);
+    // stopped by endGame()/resetGame().
+    private func startEnvelopeStreaming() {
+        stopEnvelopeStreaming()
+        envelopeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.sendEnvelopeFrame()
+        }
+    }
+
+    private func stopEnvelopeStreaming() {
+        envelopeTimer?.invalidate()
+        envelopeTimer = nil
+    }
+
+    private func sendEnvelopeFrame() {
+        let elapsed = Date().timeIntervalSinceReferenceDate
+        var values = [Int](repeating: 0, count: 6)   // absent players stay 0
+        for player in players
+        where player.hasStartedPlay && player.isConnected && player.heartRate > 0 {
+            let slot = player.id - 1
+            guard (0..<6).contains(slot) else { continue }
+            // WaveformBreathingCircle.scale(for:) normalised to 0..1.
+            let duration = 60.0 / Double(player.heartRate)
+            let progress = elapsed.truncatingRemainder(dividingBy: duration) / duration
+            let env01 = (sin(2 * Double.pi * progress - .pi / 2) + 1) / 2
+            values[slot] = Int((env01 * 100).rounded())
+        }
+        espManager.sendEnvelope(values)
+    }
+
     // MARK: - Game Control
 
     // Start the game experience
@@ -159,6 +200,7 @@ class GameStateManager: ObservableObject {
 
         gameStartTime = Date()
         currentState = .playing
+        startEnvelopeStreaming()
 
         if isSimulationEnabled {
             // Switch simulation to convergence mode
@@ -199,6 +241,9 @@ class GameStateManager: ObservableObject {
     // End the game
     func endGame() {
         currentState = .finished
+        // Stop streaming BEFORE sendDone(): a non-zero V: frame arriving after
+        // D: would flip the firmware straight back into PLAY.
+        stopEnvelopeStreaming()
         simulationProvider?.stop()
         researchLogger.endSession()
         espManager.sendDone()
@@ -212,6 +257,7 @@ class GameStateManager: ObservableObject {
     // is cleared. Going back into Configuration remains optional via the
     // gear in the toolbar.
     func resetGame() {
+        stopEnvelopeStreaming()
         researchLogger.endSession()
         simulationProvider?.stop()
         simulationProvider = nil
