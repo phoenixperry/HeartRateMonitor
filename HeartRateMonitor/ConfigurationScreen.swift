@@ -193,6 +193,31 @@ struct ConfigurationScreen: View {
                     }
                     .padding(.top, 4)
 
+                    // Session length — the timer the play screen counts down.
+                    // Stored in seconds, stepped in whole minutes.
+                    HStack(spacing: 16) {
+                        Text("Session length")
+                            .font(Type.sans(12, weight: .medium))
+                            .tracking(2)
+                            .textCase(.uppercase)
+                            .foregroundColor(Palette.muted)
+
+                        MonochromeStepper(
+                            value: Int(configManager.config.effectiveGameDuration) / 60,
+                            range: 1...30,
+                            onChange: { configManager.setGameDurationSeconds($0 * 60) }
+                        )
+
+                        Text("min")
+                            .font(Type.sans(12, weight: .medium))
+                            .tracking(2)
+                            .textCase(.uppercase)
+                            .foregroundColor(Palette.muted)
+
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+
                     Spacer()
                 }
                 .frame(minWidth: 300)
@@ -376,6 +401,36 @@ struct ConfigurationScreen: View {
     }
 }
 
+// MARK: - Strap Letter Box
+// Tiny square field for the operator's sticker letter ("A", "B", …) that
+// physically labels a strap — type the same letter here that's on the label-
+// maker sticker. Same 22×22 square chrome as the +/− buttons beside it.
+
+struct StrapLetterBox: View {
+    let uuid: UUID
+    @ObservedObject var configManager: ConfigurationManager
+    @State private var text: String = ""
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.plain)
+            .font(Type.sans(11, weight: .medium))
+            .multilineTextAlignment(.center)
+            .foregroundColor(Palette.ink)
+            .frame(width: 22, height: 22)
+            .background(Palette.canvas)
+            .overlay(Rectangle().stroke(Palette.ink, lineWidth: 1))
+            .onAppear { text = configManager.config.monitor(for: uuid)?.label ?? "" }
+            .onChange(of: text) { _, newValue in
+                // Keep it sticker-sized: uppercase, max 2 characters.
+                let clipped = String(newValue.uppercased().prefix(2))
+                if clipped != newValue { text = clipped }
+                configManager.setLabel(uuid: uuid, label: clipped)
+            }
+            .help("Sticker letter on the physical strap")
+    }
+}
+
 // MARK: - Device Row
 
 struct DeviceRow: View {
@@ -397,6 +452,11 @@ struct DeviceRow: View {
     }
     var body: some View {
         HStack(spacing: 12) {
+            // Sticker letter — only paired straps get one (letter it when you pair it).
+            if isPaired {
+                StrapLetterBox(uuid: device.uuid, configManager: configManager)
+            }
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
                     .font(Type.sans(13, weight: isPaired ? .medium : .regular))
@@ -453,6 +513,9 @@ struct OfflineDeviceRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // A charging (offline) strap can still be lettered.
+            StrapLetterBox(uuid: monitor.uuid, configManager: configManager)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(monitor.name)
                     .font(Type.sans(13))
@@ -538,9 +601,9 @@ struct PlayerSlotPicker: View {
                         updateSelection(monitor.uuid)
                     } label: {
                         if configManager.isDeviceLive(monitor.uuid) {
-                            Label(monitor.name, systemImage: "circle.fill")
+                            Label(monitor.displayName, systemImage: "circle.fill")
                         } else {
-                            Text(monitor.name)
+                            Text(monitor.displayName)
                         }
                     }
                 }
@@ -572,7 +635,7 @@ struct PlayerSlotPicker: View {
     private var currentLabel: String {
         guard let uuid = selectedBinding.wrappedValue else { return "Select device" }
         if let monitor = configManager.config.monitor(for: uuid) {
-            return monitor.name
+            return monitor.displayName
         }
         return "Select device"
     }

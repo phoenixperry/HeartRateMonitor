@@ -46,13 +46,18 @@ class GameStateManager: ObservableObject {
 
     // Envelope streaming (V: frames to the hardware, ~30 Hz)
     private var envelopeTimer: Timer? = nil
-    // Per-player phase state — mirrors WaveformBreathingCircle's timing model
-    // (accumulated phase, tempo applied only at the cycle min, gentle pull
-    // onto the shared absolute-time grid) so haptics and visuals stay locked
-    // without coupling to any view's lifecycle.
-    private var envPhase: [Int: Double] = [:]
-    private var envBPM: [Int: Int] = [:]
     private var envLastTick: Date? = nil
+
+    // The oscillators behind the V: stream, plus the sync-group logic
+    // (who breathes together, at what tempo). Owns what used to be the
+    // envPhase/envBPM dictionaries — one owner of oscillator state. The
+    // play screen binds its Lock/Release steppers to this too.
+    let syncEngine = SyncEngine()
+
+    // Y: dedup — last sync state sent to the hardware, plus a slow refresh
+    // counter so an ESP reboot mid-round repaints the right strip colour.
+    private var lastSentSyncLED: Bool? = nil
+    private var syncLEDRefreshCounter = 0
 
     // For tracking state changes
     private var cancellables = Set<AnyCancellable>()
@@ -162,16 +167,19 @@ class GameStateManager: ObservableObject {
 
     // Stream every player's breathing-circle value to the hardware at ~30 Hz
     // ("V:<v1>,...,<v6>", 0-100 per slot) so the motors mirror the visuals
-    // exactly. The values are recomputed here with the SAME math as
-    // WaveformBreathingCircle: the circle's phase is pure absolute-time + BPM
-    // (deliberately, so any two circles at one BPM agree), which means this
-    // sampler produces the identical envelope without touching any view.
-    // Runs through pause (haptics already keep breathing while paused);
-    // stopped by endGame()/resetGame().
+    // exactly. SyncEngine computes the values with the SAME math as
+    // WaveformBreathingCircle (accumulated phase, tempo applied only at the
+    // wrap — no view lifecycle involved), and layers the sync groups on top:
+    // locked players' slots carry their group's shared envelope. Stopped by
+    // pauseGame()/endGame()/resetGame().
     private func startEnvelopeStreaming() {
         stopEnvelopeStreaming()
-        envPhase = [:]
-        envBPM = [:]
+        // Everyone solo, every phase back to the most-contracted point, every
+        // tempo re-seeded from the live sensor — this is what makes RESUME
+        // restart cleanly instead of un-freezing mid-breath.
+        syncEngine.clearGroups(resetPhasesToZero: true)
+        lastSentSyncLED = nil
+        syncLEDRefreshCounter = 0
         envLastTick = nil
         envelopeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             self?.sendEnvelopeFrame()
@@ -188,30 +196,34 @@ class GameStateManager: ObservableObject {
         let dt = envLastTick.map { nowD.timeIntervalSince($0) } ?? 0
         envLastTick = nowD
         guard dt > 0, dt < 0.25 else { return }   // first tick / timer hiccup
+                                                  // (skipped frame = no tick —
+                                                  // never advance on made-up dt)
+
+        let samples = players.map {
+            SyncEngine.PlayerSample(
+                id: $0.id,
+                bpm: $0.heartRate,
+                active: $0.hasStartedPlay && $0.isConnected && $0.heartRate > 0
+            )
+        }
+        let envelopes = syncEngine.tick(dt: dt, players: samples)
 
         var values = [Int](repeating: 0, count: 6)   // absent players stay 0
-        for player in players
-        where player.hasStartedPlay && player.isConnected && player.heartRate > 0 {
-            let slot = player.id - 1
-            guard (0..<6).contains(slot) else { continue }
-
-            // Accumulated phase, exactly like the circle and the motor:
-            // speed = bpm/60 multiplied in each tick; speed changes apply
-            // only at the wrap. No grid, no cross-player coupling.
-            var bpm = envBPM[player.id] ?? player.heartRate
-            var phase = envPhase[player.id] ?? 0
-            phase += dt * Double(bpm) / 60.0
-            if phase >= 1 {
-                phase -= floor(phase)
-                bpm = player.heartRate                 // speed shifts at the wrap
-            }
-            envBPM[player.id] = bpm
-            envPhase[player.id] = phase
-
-            let env01 = (sin(2 * Double.pi * phase - .pi / 2) + 1) / 2
-            values[slot] = Int((env01 * 100).rounded())
+        for (id, env) in envelopes where (1...6).contains(id) {
+            values[id - 1] = Int((env * 100).rounded())
         }
         espManager.sendEnvelope(values)
+
+        // Strip pink ONLY when every active player is locked in one group —
+        // a 2-of-4 sync keeps its haptic/audio cue but the room stays white.
+        // Edge-triggered, with a ~1 s refresh so an ESP reboot self-heals.
+        let allSynced = syncEngine.allActiveInOneGroup
+        syncLEDRefreshCounter += 1
+        if allSynced != lastSentSyncLED || syncLEDRefreshCounter >= 30 {
+            espManager.sendSyncState(allSynced)
+            lastSentSyncLED = allSynced
+            syncLEDRefreshCounter = 0
+        }
     }
 
     // MARK: - Game Control
@@ -223,6 +235,9 @@ class GameStateManager: ObservableObject {
         // Only start play for connected players
         players.filter { $0.isConnected }.forEach { $0.startPlay() }
 
+        // The operator sets the session length on the Configuration screen;
+        // it's read once at start so mid-round config edits can't move the clock.
+        gameDuration = configManager.config.effectiveGameDuration
         gameStartTime = Date()
         currentState = .playing
         startEnvelopeStreaming()
@@ -267,12 +282,17 @@ class GameStateManager: ObservableObject {
         researchLogger.pauseSession()
         stopEnvelopeStreaming()
         players.forEach { $0.isGamePaused = true }   // gate K:/OSC/MIDI beats
+        espManager.sendSyncState(false)              // pink never survives a pause
+        lastSentSyncLED = false
         espManager.sendPause()                       // motors off within a frame
         AUEngine.shared.setMuted(true)               // volume 0 + notes off
     }
 
     // Resume the game: unmute, un-gate the beats, restart the envelope
     // stream, and wake the hardware (firmware R: exits its pause state).
+    // startEnvelopeStreaming() clears the sync groups and restarts every
+    // player from the most-contracted point at their live sensor BPM —
+    // motors come back from silence, never mid-pulse.
     func resumeGame() {
         guard currentState == .paused else { return }
         if let pauseStart = pauseStartTime {
@@ -311,6 +331,16 @@ class GameStateManager: ObservableObject {
         researchLogger.endSession()
         simulationProvider?.stop()
         simulationProvider = nil
+
+        // Full reset: groups gone, thresholds back to their defaults (the
+        // operator's mid-round tweaks are session-only by design), strip
+        // back to white-then-teal. The extra D:0 is cheap insurance for any
+        // reset path that didn't come through endGame().
+        syncEngine.clearGroups(resetPhasesToZero: true)
+        syncEngine.resetThresholds()
+        espManager.sendSyncState(false)
+        lastSentSyncLED = nil
+        espManager.sendDone()
 
         DispatchQueue.main.async { [weak self] in
             self?.players.forEach { $0.hasStartedPlay = false }

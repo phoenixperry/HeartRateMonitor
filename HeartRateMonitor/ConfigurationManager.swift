@@ -295,11 +295,26 @@ class ConfigurationManager: NSObject, ObservableObject {
         saveConfig()
     }
 
+    /// Session length for the game timer, clamped to 1-30 minutes.
+    func setGameDurationSeconds(_ seconds: Int) {
+        config.gameDurationSeconds = min(max(seconds, 60), 1800)
+        saveConfig()
+    }
+
     func updateLastSeen(for uuid: UUID) {
         if let index = config.monitors.firstIndex(where: { $0.uuid == uuid }) {
             config.monitors[index].lastSeen = Date()
             saveConfig()
         }
+    }
+
+    /// Set (or clear) the operator's sticker letter for a paired monitor —
+    /// the "A"/"B"/… that physically labels the strap. Empty clears it.
+    func setLabel(uuid: UUID, label: String) {
+        guard let index = config.monitors.firstIndex(where: { $0.uuid == uuid }) else { return }
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        config.monitors[index].label = trimmed.isEmpty ? nil : trimmed
+        saveConfig()
     }
 }
 

@@ -74,6 +74,14 @@ class ESPPeripheralManager: NSObject, ObservableObject, CBCentralManagerDelegate
         peripheral.writeValue(data, for: characteristic, type: .withoutResponse)
     }
 
+    /// Sync LED state — the app owns sync detection, the firmware just obeys:
+    /// Y:1 fades the strip pink, Y:0 back to warm white. Flag-only on the
+    /// firmware side, so it can never wake a paused or done rig.
+    /// Firmware branch: cmd.rfind("Y:", 0) == 0
+    func sendSyncState(_ synced: Bool) {
+        writeCommand("Y:\(synced ? 1 : 0)", withResponse: false)
+    }
+
     /// Tell the hardware the experience is over. Global (no player id).
     /// Firmware branch: cmd.rfind("D:", 0) == 0
     func sendDone(){

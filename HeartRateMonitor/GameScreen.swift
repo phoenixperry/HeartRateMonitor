@@ -111,6 +111,12 @@ struct GameScreen: View {
 
     private var controls: some View {
         HStack(spacing: 16) {
+            // Operator-only sync tuning: BPM thresholds for entering/leaving
+            // a sync group. Session-only — a restart puts the defaults back.
+            SyncThresholdControls(engine: gameStateManager.syncEngine)
+
+            Spacer()
+
             Button("Pause")        { gameStateManager.pauseGame() }
                 .buttonStyle(BWOutlineButtonStyle(minWidth: 160, height: 44))
 
@@ -142,6 +148,37 @@ struct GameScreen: View {
         if count <= 3 { return max(count, 1) }
         if count <= 4 { return 2 }
         return 3
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The sync thresholds, live-adjustable mid-round. "Lock ≤" is how close (in
+// BPM) a player must be to a group's tempo to join it; "Release ≥" how far
+// they must drift to leave. The engine keeps release strictly above lock so
+// the band can never collapse to zero and flap. Its own @ObservedObject —
+// SyncEngine's @Published changes don't flow through GameStateManager.
+struct SyncThresholdControls: View {
+    @ObservedObject var engine: SyncEngine
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Eyebrow(text: "Lock ≤")
+            MonochromeStepper(
+                value: engine.enterThresholdBPM,
+                range: 1...10,
+                onChange: { engine.setEnterThreshold($0) }
+            )
+
+            Eyebrow(text: "Release ≥")
+            MonochromeStepper(
+                value: engine.exitThresholdBPM,
+                range: 2...15,
+                onChange: { engine.setExitThreshold($0) }
+            )
+
+            Eyebrow(text: "BPM")
+        }
     }
 }
 
