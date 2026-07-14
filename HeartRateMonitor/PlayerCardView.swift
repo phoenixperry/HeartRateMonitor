@@ -121,7 +121,9 @@ struct PlayerCardView: View {
         VStack(spacing: 14) {
             // Primary: Join the group
             Button {
-                viewModel.startPlay()
+                // announce: true → immediate tile buzz + their note, so tapping
+                // "You're in" on the setup screen is felt and heard at once.
+                viewModel.startPlay(announce: true)
                 shouldAnimate = true
             } label: {
                 Text(viewModel.hasStartedPlay ? "You're in" : "Join the group")

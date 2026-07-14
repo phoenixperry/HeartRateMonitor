@@ -22,6 +22,18 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     private var lastCycleAt: Date? = nil   // dedup: one beat per breathing cycle
     var isGamePaused: Bool = false         // set by GameStateManager on pause/resume:
                                            // gates ALL per-beat output (K:, OSC, MIDI)
+    var outputEnabled: Bool = false        // whether this player's per-beat output (tile
+                                           // haptic + tempo + their note) may reach the
+                                           // hardware. Turned ON the moment they tap
+                                           // "You're in" (startPlay) — so each player gets
+                                           // to meet the sound + tile pulse they make while
+                                           // still on the setup screen, before the group
+                                           // experience begins — and stays on through play.
+                                           // Turned OFF on pause/end/reset so a joined
+                                           // player can't wake the firmware (S:/K: flip it
+                                           // out of DONE) after the experience is over.
+                                           // The startup "flash" fix lives elsewhere now:
+                                           // GameStateManager fades the V: envelope in.
     private let oscQueue = DispatchQueue(label: "oscQueue", qos: .userInitiated)
     private let bluetoothQueue = DispatchQueue(label: "bluetoothQueue", qos: .userInitiated)
 
@@ -55,9 +67,11 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     }
 
     func cycleDidComplete() {
-        //Only process if player is actively in play mode (and not paused —
-        //a K: leaking through during pause would also confuse the firmware)
-        guard hasStartedPlay, isConnected, !isGamePaused else { return }
+        //Only fire once the player has joined ("You're in") and output is
+        //enabled — enabled in the setup lobby AND during play, disabled on
+        //pause/end/reset. This lets each player feel their tile + hear their
+        //note on the setup screen, while never leaking a beat after the round.
+        guard hasStartedPlay, isConnected, !isGamePaused, outputEnabled else { return }
         // One beat per breathing cycle, whichever clock fires first. TWO paths
         // call this for simulated players — the circle view's onCycleComplete
         // AND updateSimulatedBPM (which fires on every sim tick / BPM change).
@@ -186,7 +200,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
                 // up to a minute if currentBPM was still at the bootstrap
                 // value) before they hear anything. Subsequent beats come from
                 // the cycle-completed callback as normal.
-                if wasZero && isNonZero && self.hasStartedPlay && self.isConnected {
+                if wasZero && isNonZero && self.hasStartedPlay && self.isConnected && self.outputEnabled {
                     AUEngine.shared.noteOnIfEnabled(player: self.id)
                 }
 
@@ -225,11 +239,20 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         }
     }
 
-    func startPlay() {
+    /// Join the group. `announce` gives an immediate one-shot tile pulse + note
+    /// the instant the player taps "You're in" on the setup screen, so joining
+    /// is felt and heard right away instead of on their next heartbeat. The bulk
+    /// start from startGame() leaves it false — an extra kick there would blip
+    /// the motors just as the smooth envelope fade-in begins.
+    func startPlay(announce: Bool = false) {
         DispatchQueue.main.async {
             self.hasStartedPlay = true
+            self.outputEnabled = true      // enable this player's tile + sound now
+            if announce && self.isConnected {
+                self.sendHapticsToESP(self.tileChannel)          // buzz their tile once
+                AUEngine.shared.noteOnIfEnabled(player: self.id) // sound their note once
+            }
             print("▶️ Player \(self.id) started play")
-            
         }
     }
 }

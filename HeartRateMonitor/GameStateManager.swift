@@ -47,6 +47,15 @@ class GameStateManager: ObservableObject {
     // Envelope streaming (V: frames to the hardware, ~30 Hz)
     private var envelopeTimer: Timer? = nil
     private var envLastTick: Date? = nil
+    // When the current V: stream began. The hardware strip has no smoothing of
+    // its own (fade_speed = 1.0) and rigidly follows the strongest breath, so
+    // the instant the stream starts it snaps to full-amplitude breathing —
+    // which reads as a couple of hard amber "flashes" at the top of a session.
+    // We fade the streamed amplitude in over the first ~1.2 s so the strip and
+    // motors ease into the breath instead of stabbing into it. Applies on
+    // start AND resume (both call startEnvelopeStreaming).
+    private var streamStartAt: Date? = nil
+    private let envelopeFadeInSeconds: TimeInterval = 1.2
 
     // The oscillators behind the V: stream, plus the sync-group logic
     // (who breathes together, at what tempo). Owns what used to be the
@@ -183,9 +192,21 @@ class GameStateManager: ObservableObject {
         lastSentSyncLED = nil
         syncLEDRefreshCounter = 0
         envLastTick = nil
+        streamStartAt = Date()      // begin the amplitude fade-in for this stream
         envelopeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             self?.sendEnvelopeFrame()
         }
+    }
+
+    /// 0→1 amplitude ramp for the first `envelopeFadeInSeconds` of a stream,
+    /// smoothstep-eased so the strip glides up from dark instead of snapping to
+    /// full-amplitude breathing. 1.0 (no scaling) once the fade completes.
+    private func envelopeFadeInGain(at now: Date) -> Double {
+        guard let start = streamStartAt else { return 1 }
+        let t = now.timeIntervalSince(start) / envelopeFadeInSeconds
+        if t >= 1 { return 1 }
+        if t <= 0 { return 0 }
+        return t * t * (3 - 2 * t)   // smoothstep
     }
 
     private func stopEnvelopeStreaming() {
@@ -210,6 +231,10 @@ class GameStateManager: ObservableObject {
         }
         let envelopes = syncEngine.tick(dt: dt, players: samples)
 
+        // Ease the whole frame up from silence at the top of a stream so the
+        // strip/motors don't stab into full breathing (the "yellow flashes").
+        let gain = envelopeFadeInGain(at: nowD)
+
         // SyncEngine keys envelopes by player id; the hardware frame is indexed
         // by physical tile channel. Route each player's value to the tile they
         // were assigned so the motors/lights mirror the visuals on the right
@@ -217,7 +242,7 @@ class GameStateManager: ObservableObject {
         var values = [Int](repeating: 0, count: 6)   // absent tiles stay 0
         for player in players {
             guard let env = envelopes[player.id], (1...6).contains(player.tileChannel) else { continue }
-            values[player.tileChannel - 1] = Int((env * 100).rounded())
+            values[player.tileChannel - 1] = Int((env * gain * 100).rounded())
         }
         espManager.sendEnvelope(values)
 
@@ -239,7 +264,8 @@ class GameStateManager: ObservableObject {
     func startGame() {
         guard currentState == .ready else { return }
 
-        // Only start play for connected players
+        // Only start play for connected players. startPlay() already enables
+        // each one's output; players who joined in the lobby were already live.
         players.filter { $0.isConnected }.forEach { $0.startPlay() }
 
         // The operator sets the session length on the Configuration screen;
@@ -288,7 +314,7 @@ class GameStateManager: ObservableObject {
         researchLogger.logEvent("pause")
         researchLogger.pauseSession()
         stopEnvelopeStreaming()
-        players.forEach { $0.isGamePaused = true }   // gate K:/OSC/MIDI beats
+        players.forEach { $0.isGamePaused = true; $0.outputEnabled = false }   // gate K:/OSC/MIDI beats
         espManager.sendSyncState(false)              // pink never survives a pause
         lastSentSyncLED = false
         espManager.sendPause()                       // motors off within a frame
@@ -309,7 +335,7 @@ class GameStateManager: ObservableObject {
         currentState = .playing
         AUEngine.shared.setMuted(false)
         espManager.sendResume()
-        players.forEach { $0.isGamePaused = false }
+        players.forEach { $0.isGamePaused = false; $0.outputEnabled = true }
         startEnvelopeStreaming()
         researchLogger.resumeSession()
         researchLogger.logEvent("resume")
@@ -318,6 +344,7 @@ class GameStateManager: ObservableObject {
     // End the game
     func endGame() {
         currentState = .finished
+        players.forEach { $0.outputEnabled = false }   // no per-beat output past the session
         // Stop streaming BEFORE sendDone(): a non-zero V: frame arriving after
         // D: would flip the firmware straight back into PLAY.
         stopEnvelopeStreaming()
@@ -350,7 +377,7 @@ class GameStateManager: ObservableObject {
         espManager.sendDone()
 
         DispatchQueue.main.async { [weak self] in
-            self?.players.forEach { $0.hasStartedPlay = false }
+            self?.players.forEach { $0.hasStartedPlay = false; $0.outputEnabled = false }
         }
 
         gameStartTime = nil
