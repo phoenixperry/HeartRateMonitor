@@ -316,6 +316,35 @@ class ConfigurationManager: NSObject, ObservableObject {
         config.monitors[index].label = trimmed.isEmpty ? nil : trimmed
         saveConfig()
     }
+
+    // MARK: - Tile assignment
+
+    /// Rotate the A-F lettering over the fixed channel ring ("start the
+    /// lettering with any tile"). `anchor` is the 0-based channel that becomes
+    /// tile "A".
+    func setTileAnchor(_ anchor: Int) {
+        config.tileAnchor = (((anchor % 6) + 6) % 6)
+        saveConfig()
+    }
+
+    /// Put a player on a tile: assign the given player slot (0-based) the tile
+    /// LETTER index (0=A … 5=F). If another active player already holds that
+    /// tile, the two swap — same feel as the monitor picker, and it keeps the
+    /// players ↔ tiles mapping one-to-one so no two players fight over a motor.
+    func setPlayerTile(playerIndex: Int, letterIndex: Int) {
+        guard playerIndex >= 0, playerIndex < config.playerCount else { return }
+        let target = (((letterIndex % 6) + 6) % 6)
+
+        // Materialise a full letter-per-slot array (identity fills the gaps).
+        var tiles = (0..<config.playerCount).map { config.tileLetterIndex(forPlayerIndex: $0) }
+        let old = tiles[playerIndex]
+        if let other = tiles.firstIndex(of: target), other != playerIndex {
+            tiles[other] = old          // whoever held the target tile takes our old one
+        }
+        tiles[playerIndex] = target
+        config.playerTiles = tiles
+        saveConfig()
+    }
 }
 
 // MARK: - CBCentralManagerDelegate

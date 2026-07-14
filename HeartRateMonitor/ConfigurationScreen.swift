@@ -218,6 +218,38 @@ struct ConfigurationScreen: View {
                     }
                     .padding(.top, 4)
 
+                    // First tile — rotate the A–F labels over the six wired
+                    // tiles so the on-screen letters match how the board sits
+                    // in the room. Persisted, so next session the lettering is
+                    // already how you left it and you don't have to re-figure it.
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 16) {
+                            Text("First tile")
+                                .font(Type.sans(12, weight: .medium))
+                                .tracking(2)
+                                .textCase(.uppercase)
+                                .foregroundColor(Palette.muted)
+
+                            MonochromeStepper(
+                                value: configManager.config.effectiveTileAnchor + 1,
+                                range: 1...6,
+                                onChange: { configManager.setTileAnchor($0 - 1) }
+                            )
+
+                            Text("A = tile \(configManager.config.effectiveTileAnchor + 1)")
+                                .font(Type.sans(12, weight: .medium))
+                                .foregroundColor(Palette.ink)
+
+                            Spacer()
+                        }
+
+                        Text("Labels A–F onto the wired tiles:  \(tileMapCaption)")
+                            .font(Type.sans(11))
+                            .foregroundColor(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 4)
+
                     Spacer()
                 }
                 .frame(minWidth: 300)
@@ -398,6 +430,14 @@ struct ConfigurationScreen: View {
         configManager.config.monitors.filter { monitor in
             !configManager.discoveredDevices.contains { $0.uuid == monitor.uuid }
         }
+    }
+
+    // "A1  B2  C3 …" — the live letter→wired-tile mapping for the current
+    // anchor, so the operator can read the rotation at a glance.
+    var tileMapCaption: String {
+        AppConfiguration.tileLetters.enumerated().map { idx, letter in
+            "\(letter)\(configManager.config.channel(forLetterIndex: idx))"
+        }.joined(separator: "  ")
     }
 }
 
@@ -627,6 +667,9 @@ struct PlayerSlotPicker: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+
+            // Which physical hex tile this player stands on / drives.
+            TilePicker(playerIndex: playerNumber - 1, configManager: configManager)
         }
     }
 
@@ -702,6 +745,56 @@ struct PlayerSlotPicker: View {
 
         configManager.config.selectedPlayerUUIDs = uuids
         configManager.saveConfig()
+    }
+}
+
+// MARK: - Tile Picker
+// Compact A–F menu that puts a player on a physical hex tile. The letter is
+// whatever the "First tile" anchor maps this slot to; picking a new letter
+// re-routes this player's motor / light / haptic to that tile's channel.
+
+struct TilePicker: View {
+    let playerIndex: Int
+    @ObservedObject var configManager: ConfigurationManager
+
+    private var letterIndex: Int {
+        configManager.config.tileLetterIndex(forPlayerIndex: playerIndex)
+    }
+    private var letter: String {
+        AppConfiguration.tileLetters[letterIndex]
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(0..<AppConfiguration.tileLetters.count, id: \.self) { li in
+                Button {
+                    configManager.setPlayerTile(playerIndex: playerIndex, letterIndex: li)
+                } label: {
+                    if li == letterIndex {
+                        Label("Tile \(AppConfiguration.tileLetters[li])", systemImage: "checkmark")
+                    } else {
+                        Text("Tile \(AppConfiguration.tileLetters[li])")
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(letter)
+                    .font(Type.sans(12, weight: .medium))
+                    .foregroundColor(Palette.ink)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(Palette.ink)
+            }
+            .frame(width: 44)
+            .padding(.vertical, 7)
+            .background(Palette.canvas)
+            .overlay(Rectangle().stroke(Palette.ink, lineWidth: 1))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Which physical hex tile this player drives")
     }
 }
 

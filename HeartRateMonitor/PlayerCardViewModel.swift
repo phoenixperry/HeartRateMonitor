@@ -7,6 +7,12 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     let deviceUUID: UUID
     let isSimulated: Bool
 
+    // The physical hardware tile (motor + light channel, 1-6) this player
+    // drives. Defaults to the player's own id so, absent any tile config, a
+    // player still lands on the channel they always did. GameStateManager
+    // sets this from the tile assignment when it (re)builds the players.
+    var tileChannel: Int
+
     @Published var isConnected: Bool = false
     @Published var hasStartedPlay: Bool = false
     @Published var heartRate: Int = 0
@@ -28,6 +34,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     init(id: Int, deviceUUID: UUID, espManager: ESPPeripheralManager, simulated: Bool = false) {
         self.id = id
         self.deviceUUID = deviceUUID
+        self.tileChannel = id      // identity until GameStateManager applies the tile map
         self.espManager = espManager
         self.isSimulated = simulated
         self.heartRateManager = simulated ? nil : HeartRateManager()
@@ -61,14 +68,14 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         lastCycleAt = nowT
         // Capture value once to ensure consistency
         let bpmToSend = heartRate
-        sendHapticsToESP(id)
+        sendHapticsToESP(tileChannel)   // fire the motor on this player's tile
 
         // Per-heartbeat OSC pulse, fires every cycle regardless of BPM change.
         // Separate channel from /player/N/bpm — consumers can pick whichever fits.
         let beatBPM = max(0, bpmToSend)
         oscQueue.async { [weak self] in
             guard let self = self else { return }
-            self.oscManager.sendBeat(forPlayer: self.id, bpm: UInt16(beatBPM))
+            //self.oscManager.sendBeat(forPlayer: self.id, bpm: UInt16(beatBPM))
         }
 
         // ──────────────────────────────────────────────────────────────────
@@ -108,12 +115,12 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
          //   guard bpmToSend > 0 && bpmToSend < 240 else { return }
             
             // Double-check value range on background thread - there might be some cause for filtering for wild values from the sensors.
-//              guard bpmToSend > 0 && bpmToSend < 240 else {
-//                  print("⚠️ BPM out of range: \(bpmToSend)")
-//                  return
-//              }
+              guard bpmToSend > 0 && bpmToSend < 240 else {
+                  print("⚠️ BPM out of range: \(bpmToSend)")
+                  return
+              }
             //send OSC
-            self.oscManager.sendBPM(forPlayer: self.id, bpm: UInt16(bpmToSend))
+            //self.oscManager.sendBPM(forPlayer: self.id, bpm: UInt16(bpmToSend))
         
             }
     
@@ -121,7 +128,7 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
         bluetoothQueue.async {[weak self] in
             guard let self = self else { return }
      
-            self.espManager.sendTempo(id: self.id, bpm: bpmToSend)
+            self.espManager.sendTempo(id: self.tileChannel, bpm: bpmToSend)
             //print("📡 Player(\(self.id)): Sent BPM \(bpmToSend) to OSC and ESP")
         }
     }
@@ -199,12 +206,12 @@ class PlayerCardViewModel: ObservableObject, Identifiable {
     func disconnect() {
         guard !isSimulated else { return }
 
-        // Stop this player's motor NOW — S:<id>:0 is the firmware stop command
-        // (monitor and motor are twins). Sent first so the tile falls silent
-        // even if UI state teardown lags.
+        // Stop this player's motor NOW — S:<channel>:0 is the firmware stop
+        // command (monitor and motor are twins). Sent to the player's tile so
+        // the right tile falls silent even if UI state teardown lags.
         bluetoothQueue.async { [weak self] in
             guard let self = self else { return }
-            self.espManager.sendTempo(id: self.id, bpm: 0)
+            self.espManager.sendTempo(id: self.tileChannel, bpm: 0)
         }
 
         heartRateManager?.disconnectCurrentPeripheral()

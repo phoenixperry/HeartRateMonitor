@@ -94,6 +94,7 @@ class GameStateManager: ObservableObject {
                     espManager: espManager,
                     simulated: true
                 )
+                player.tileChannel = configManager.config.channel(forPlayerIndex: i)
                 player.isConnected = true
                 players.append(player)
             }
@@ -116,6 +117,7 @@ class GameStateManager: ObservableObject {
                     deviceUUID: uuid,
                     espManager: espManager
                 )
+                player.tileChannel = configManager.config.channel(forPlayerIndex: index)
                 players.append(player)
             }
             print("🔄 Rebuilt \(players.count) players from config")
@@ -208,9 +210,14 @@ class GameStateManager: ObservableObject {
         }
         let envelopes = syncEngine.tick(dt: dt, players: samples)
 
-        var values = [Int](repeating: 0, count: 6)   // absent players stay 0
-        for (id, env) in envelopes where (1...6).contains(id) {
-            values[id - 1] = Int((env * 100).rounded())
+        // SyncEngine keys envelopes by player id; the hardware frame is indexed
+        // by physical tile channel. Route each player's value to the tile they
+        // were assigned so the motors/lights mirror the visuals on the right
+        // hex, even when a player has been placed on a non-default tile.
+        var values = [Int](repeating: 0, count: 6)   // absent tiles stay 0
+        for player in players {
+            guard let env = envelopes[player.id], (1...6).contains(player.tileChannel) else { continue }
+            values[player.tileChannel - 1] = Int((env * 100).rounded())
         }
         espManager.sendEnvelope(values)
 
